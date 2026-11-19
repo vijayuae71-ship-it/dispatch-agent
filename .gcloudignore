@@ -1,0 +1,10 @@
+# Files not uploaded to Cloud Build by `gcloud run deploy --source .`
+.git
+.github
+node_modules
+dist
+.test-build
+test
+.env
+.env.*
+!.env.example

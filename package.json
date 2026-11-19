@@ -1,0 +1,27 @@
+{
+  "name": "dispatch-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI dispatcher for Indian logistics: WhatsApp-first delivery confirmations, driver ETA check-ins, escalation calls and dispatcher alerts.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --platform=node --target=node22 --packages=external --sourcemap --outfile=dist/server.js",
+    "start": "node --enable-source-maps dist/server.js",
+    "dev": "npm run build && STORE=memory SKIP_SIGNATURE=true PUBLIC_URL=http://localhost:8080 node --enable-source-maps dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node test/run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
+    "firebase-admin": "^12.0.0",
+    "google-auth-library": "^9.15.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}

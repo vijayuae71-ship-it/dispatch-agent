@@ -1,0 +1,51 @@
+import { config } from './config';
+import { fmtTime } from './clock';
+import type { Delivery } from './types';
+
+// Opening messages the bot sends first. WhatsApp only allows a business to
+// start a conversation (or write after 24h of silence) with a pre-approved
+// template, so these are fixed texts, not AI-written.
+//
+// To go live, create each one as a WhatsApp template in Twilio's Content
+// Template Builder, using {{1}}, {{2}}… for the variables in the order listed,
+// get it approved, and put its Content SID in the env var named in `envKey`.
+// Inside the 24h window, the same text is sent as a normal message.
+
+export type TemplateName = 'client_confirm' | 'driver_eta' | 'dispatcher_alert';
+type Lang = 'en' | 'hi';
+
+const TEXT: Record<TemplateName, Record<Lang, string>> = {
+  client_confirm: {
+    en: 'Hello {{1}}, this is {{2}} dispatch. Your order {{3}} ({{4}}) is planned to reach {{5}} around {{6}} on truck {{7}}. Please reply to confirm the site is ready to unload, and share the site contact number if it has changed.',
+    hi: 'Namaste {{1}}, {{2}} dispatch se. Aapka order {{3}} ({{4}}) {{5}} par lagbhag {{6}} baje truck {{7}} se pahunchega. Kripya reply karke confirm karein ki site unloading ke liye ready hai, aur site contact number badla ho to bata dein.',
+  },
+  driver_eta: {
+    en: 'Hello {{1}}, {{2}} dispatch here. Order {{3}} to {{4}}, truck {{5}}: where are you now and what time will you reach? Please reply when safely stopped.',
+    hi: 'Namaste {{1}}, {{2}} dispatch se. Order {{3}}, {{4}} ke liye, truck {{5}}: abhi aap kahan ho aur kitne baje pahunchoge? Gaadi rok kar reply karein.',
+  },
+  dispatcher_alert: {
+    en: '⚠️ {{1}}',
+    hi: '⚠️ {{1}}',
+  },
+};
+
+function langOf(code?: string): Lang {
+  return (code || config().defaultLanguage).toLowerCase().startsWith('hi') ? 'hi' : 'en';
+}
+
+export function templateVars(name: TemplateName, d: Delivery | null, extra?: string): string[] {
+  const c = config();
+  if (name === 'dispatcher_alert') return [extra || ''];
+  if (!d) return [];
+  if (name === 'client_confirm') return [d.client.name, c.company, d.orderNo, d.material, d.site.name, fmtTime(d.plannedAt), d.truck];
+  return [d.driver.name, c.company, d.orderNo, d.site.name, d.truck];
+}
+
+export function renderTemplate(name: TemplateName, language: string | undefined, vars: string[]): { text: string; envKey: string; lang: Lang } {
+  const lang = langOf(language);
+  const text = TEXT[name][lang].replace(/\{\{(\d+)\}\}/g, (_, n) => vars[Number(n) - 1] ?? '');
+  return { text, envKey: `TEMPLATE_${name.toUpperCase()}_${lang.toUpperCase()}`, lang };
+}
+
+/** All template texts, for the README and the Twilio template set-up. */
+export const ALL_TEMPLATES = TEXT;

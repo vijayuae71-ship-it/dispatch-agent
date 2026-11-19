@@ -1,0 +1,27 @@
+{
+  "company": "Demo Logistics",
+  "agentName": "Asha",
+  "timezone": "Asia/Kolkata",
+  "defaultLanguage": "hi-IN",
+  "dispatchers": [],
+  "rules": {
+    "clientConfirmLeadMin": 120,
+    "noReplyMin": 20,
+    "driverCheckBeforeEtaMin": 15,
+    "driverStaleMin": 90,
+    "lateThresholdMin": 45
+  },
+  "callsEnabled": true,
+  "languages": [
+    { "code": "hi-IN", "name": "Hindi / Hinglish", "ttsProvider": "ElevenLabs", "transcriptionProvider": "Deepgram", "transcriptionLanguage": "multi", "speechModel": "nova-3-general", "style": "Everyday Hindi; mix English words like truck, site, location, ETA as people do." },
+    { "code": "en-IN", "name": "English (Indian)", "ttsProvider": "ElevenLabs", "transcriptionProvider": "Deepgram", "transcriptionLanguage": "multi", "speechModel": "nova-3-general" },
+    { "code": "mr-IN", "name": "Marathi", "ttsProvider": "Google", "voice": "mr-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "ta-IN", "name": "Tamil", "ttsProvider": "ElevenLabs", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "te-IN", "name": "Telugu", "ttsProvider": "Google", "voice": "te-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "kn-IN", "name": "Kannada", "ttsProvider": "Google", "voice": "kn-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "bn-IN", "name": "Bengali", "ttsProvider": "Google", "voice": "bn-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "pa-IN", "name": "Punjabi", "ttsProvider": "Google", "voice": "pa-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "gu-IN", "name": "Gujarati", "ttsProvider": "Google", "voice": "gu-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" },
+    { "code": "ml-IN", "name": "Malayalam", "ttsProvider": "Google", "voice": "ml-IN-Chirp3-HD-Aoede", "transcriptionProvider": "Google", "speechModel": "telephony" }
+  ]
+}

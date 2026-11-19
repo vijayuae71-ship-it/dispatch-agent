@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Dispatch Agent</title>
+<style>
+  :root {
+    --bg: #f3f4f1; --card: #ffffff; --ink: #1b211e; --muted: #5d6862; --line: #e2e5e0;
+    --accent: #2f6b4f; --accent-ink: #fff; --soft: #eef3ef;
+    --wa-bg: #efeae2; --wa-in: #ffffff; --wa-out: #d9fdd3; --wa-ink: #111b21;
+    --s-scheduled: #e8eaf0; --s-scheduled-ink: #3b4256;
+    --s-confirmed: #dcefff; --s-confirmed-ink: #0b4d80;
+    --s-en_route: #dff5e6; --s-en_route-ink: #145a32;
+    --s-delayed: #fff0cf; --s-delayed-ink: #7a4d00;
+    --s-arrived: #e3e0ff; --s-arrived-ink: #3a2f8f;
+    --s-delivered: #d4f0d9; --s-delivered-ink: #0e4d1d;
+    --s-rescheduled: #f3e3ff; --s-rescheduled-ink: #5d1f87;
+    --s-issue: #ffe0de; --s-issue-ink: #8a1a12;
+    --s-cancelled: #e9e9e9; --s-cancelled-ink: #555;
+    --crit: #b42318; --warn: #a15c00; --info: #2f5f8a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121614; --card: #1a201d; --ink: #e6ebe8; --muted: #9aa6a0; --line: #2a322e;
+      --accent: #6db38c; --accent-ink: #0c1510; --soft: #1f2a24;
+      --wa-bg: #0b141a; --wa-in: #202c33; --wa-out: #005c4b; --wa-ink: #e9edef;
+      --s-scheduled: #2a2e38; --s-scheduled-ink: #c8cee0;
+      --s-confirmed: #12324d; --s-confirmed-ink: #b9dcff;
+      --s-en_route: #143522; --s-en_route-ink: #b6eac6;
+      --s-delayed: #43330f; --s-delayed-ink: #ffd98a;
+      --s-arrived: #2a2556; --s-arrived-ink: #d1ccff;
+      --s-delivered: #12391c; --s-delivered-ink: #b0e6bc;
+      --s-rescheduled: #3a1f4f; --s-rescheduled-ink: #e7c6ff;
+      --s-issue: #4c1a16; --s-issue-ink: #ffc3bd;
+      --s-cancelled: #2c2c2c; --s-cancelled-ink: #bbb;
+      --crit: #ff8b80; --warn: #ffbf5c; --info: #8cc2f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 7px 12px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  input { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  .hidden { display: none !important; }
+  header.top { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  header.top h1 { font-size: 17px; margin: 0; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; padding: 4px 10px; background: var(--soft); border-radius: 8px; }
+  .badge { display: inline-block; border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+  .mode-demo { background: #ffe9b8; color: #6b4500; }
+  .mode-live { background: #d4f0d9; color: #0e4d1d; }
+  .spacer { flex: 1; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; }
+  main { padding: 14px 16px 40px; max-width: 1400px; margin: 0 auto; }
+  .guide { background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+  .guide b { color: var(--accent); }
+  .layout { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  .layout > * { min-width: 0; }
+  @media (min-width: 1000px) { .layout { grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr); } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .count { background: var(--soft); border-radius: 99px; padding: 0 8px; font-size: 12px; color: var(--muted); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  @media (min-width: 1000px) { .tabs { display: none; } }
+  .tabs button { flex: 1; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  @media (max-width: 999px) { [data-pane]:not(.active) { display: none; } }
+  .deliveries { display: flex; flex-direction: column; gap: 8px; }
+  .dl { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 4px 12px; grid-template-columns: minmax(0, 1fr) auto; }
+  .dl > * { min-width: 0; overflow-wrap: anywhere; }
+  .dl.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { from { background: var(--soft); } to { background: transparent; } }
+  .dl .order { font-weight: 700; }
+  .dl .what { color: var(--muted); }
+  .dl .row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+  .dl .row span b { font-weight: 600; }
+  .status { border-radius: 99px; padding: 2px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; align-self: start; }
+  .late { color: var(--warn); font-weight: 700; }
+  .issue { color: var(--crit); font-weight: 600; }
+  .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; }
+  .alerts { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+  .alert { border-left: 4px solid var(--info); background: var(--soft); border-radius: 8px; padding: 7px 10px; font-size: 13px; display: flex; gap: 8px; align-items: start; }
+  .alert.critical { border-color: var(--crit); }
+  .alert.warning { border-color: var(--warn); }
+  .alert.resolved { opacity: .5; }
+  .alert .t { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .alert .x { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+  .contacts { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+  .contact { white-space: nowrap; border-radius: 99px; padding: 5px 12px; font-size: 13px; position: relative; }
+  .contact[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .contact .dot { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: #25d366; border: 2px solid var(--card); }
+  .phone { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; height: 460px; }
+  .phone-head { background: #075e54; color: #fff; padding: 9px 12px; display: flex; align-items: center; gap: 10px; }
+  .phone-head .avatar { width: 32px; height: 32px; border-radius: 50%; background: #dfe5e7; color: #075e54; display: grid; place-items: center; font-weight: 700; }
+  .phone-head .who { font-weight: 600; line-height: 1.2; }
+  .phone-head .who small { display: block; font-weight: 400; opacity: .8; font-size: 11px; }
+  .chat { flex: 1; overflow-y: auto; background: var(--wa-bg); padding: 10px; display: flex; flex-direction: column; gap: 5px; }
+  .bubble { max-width: 82%; padding: 6px 9px 4px; border-radius: 8px; background: var(--wa-in); color: var(--wa-ink); font-size: 13.5px; box-shadow: 0 1px .5px rgba(0,0,0,.13); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bubble.out { align-self: flex-end; background: var(--wa-out); }
+  .bubble .meta { display: block; text-align: right; font-size: 10px; opacity: .6; margin-top: 2px; }
+  .bubble.call { border: 1px dashed rgba(127,127,127,.6); }
+  .sys { align-self: center; background: rgba(127,127,127,.18); color: var(--wa-ink); font-size: 12px; border-radius: 8px; padding: 3px 10px; }
+  .composer { display: flex; gap: 6px; padding: 8px; background: var(--card); border-top: 1px solid var(--line); }
+  .composer input { flex: 1; border-radius: 20px; }
+  .composer button { border-radius: 20px; }
+  .ring { background: #128c7e; color: #fff; padding: 10px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ring b { flex: 1; }
+  .ring button { border: 0; border-radius: 20px; padding: 6px 14px; font-weight: 700; }
+  .ring .ans { background: #25d366; color: #fff; }
+  .ring .dec { background: #e53935; color: #fff; }
+  .incall { background: #0a5c52; color: #fff; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  .incall button { margin-left: auto; border: 0; border-radius: 16px; background: #e53935; color: #fff; padding: 4px 12px; }
+  .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .err { color: var(--crit); }
+  .login { max-width: 380px; margin: 70px auto; }
+  .typing { align-self: flex-start; font-size: 12px; color: var(--muted); padding: 2px 6px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .kpi .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { color: var(--muted); font-size: 12px; }
+  @media (max-width: 600px) {
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    header.top { padding: 8px 12px; gap: 8px; position: static; }
+    .controls button { padding: 6px 10px; }
+    main { padding: 12px 12px 40px; }
+  }
+</style>
+</head>
+<body>
+<form id="login" class="card login hidden">
+  <h1 style="margin-top:0;font-size:20px">Dispatch Agent</h1>
+  <p class="sub">Enter the ADMIN_KEY set on the server.</p>
+  <input id="key" type="password" autocomplete="off" style="width:100%">
+  <p id="loginErr" class="err"></p>
+  <button class="primary" style="width:100%">Open console</button>
+</form>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <div>
+      <h1>Dispatch Agent <span id="mode" class="badge"></span></h1>
+      <div class="sub" id="company"></div>
+    </div>
+    <div class="clock" id="clock" title="Dispatch clock"></div>
+    <div class="spacer"></div>
+    <div class="controls" id="demoControls">
+      <button id="startDemo" class="primary">▶ Start demo day</button>
+      <button data-adv="15">+15 min</button>
+      <button data-adv="30">+30 min</button>
+      <button data-adv="60">+1 hour</button>
+    </div>
+    <div class="controls" id="liveControls">
+      <button id="runRules">Run rules now</button>
+      <button id="syncSheet" class="hidden">Sync sheet</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="guide" id="guide"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="tabs" role="tablist">
+      <button data-tab="board" aria-selected="true">Board</button>
+      <button data-tab="side" aria-selected="false">Alerts &amp; chats</button>
+    </div>
+    <div class="layout">
+      <section class="card active" data-pane="board">
+        <h2>Today's deliveries <span class="count" id="dCount"></span></h2>
+        <div id="deliveries" class="deliveries"></div>
+      </section>
+      <div data-pane="side" style="display:flex;flex-direction:column;gap:14px">
+        <section class="card">
+          <h2>Dispatcher alerts <span class="count" id="aCount"></span></h2>
+          <div id="alerts" class="alerts"></div>
+        </section>
+        <section class="card">
+          <h2>WhatsApp &amp; calls</h2>
+          <div id="contacts" class="contacts"></div>
+          <div id="phone" class="phone">
+            <div class="empty" style="margin:auto">Pick a contact above to see their chat.</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); Object.assign(n, props); for (const k of kids) if (k != null && k !== false) n.append(k); return n; };
+  const store = { get() { try { return sessionStorage.getItem('dispatch_key') || ''; } catch { return ''; } }, set(v) { try { sessionStorage.setItem('dispatch_key', v); } catch {} } };
+  const STATUS_LABEL = { scheduled: 'Scheduled', confirmed: 'Confirmed', en_route: 'On the way', delayed: 'Delayed', arrived: 'Arrived', delivered: 'Delivered', rescheduled: 'Reschedule asked', issue: 'Issue', cancelled: 'Cancelled' };
+  const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+
+  let key = store.get();
+  let S = null;              // last state from the server
+  let selected = '';         // selected phone
+  let busy = false;
+  const typing = new Set();  // phones waiting on the bot
+  const prevStatus = new Map();
+
+  async function api(path, body) {
+    const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: body ? JSON.stringify(body) : undefined });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
+    return j;
+  }
+
+  async function refresh() {
+    try { S = await api('/api/state'); render(); }
+    catch (e) { if (/admin key|401/i.test(e.message)) showLogin(e.message); }
+  }
+
+  function showLogin(msg) { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('loginErr').textContent = msg || ''; }
+  $('login').addEventListener('submit', async (e) => {
+    e.preventDefault(); key = $('key').value.trim(); store.set(key);
+    try { S = await api('/api/state'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); }
+    catch (err) { showLogin(err.message); }
+  });
+
+  // ------------------------------------------------------------- contacts
+  function contacts() {
+    const map = new Map();
+    for (const d of S.deliveries) {
+      if (!map.has(d.client.phone)) map.set(d.client.phone, { phone: d.client.phone, name: d.client.name, party: 'client', sub: `Client · ${d.site.name}` });
+      if (!map.has(d.driver.phone)) map.set(d.driver.phone, { phone: d.driver.phone, name: d.driver.name, party: 'driver', sub: `Driver · ${d.truck}` });
+    }
+    for (const t of S.threads) if (!map.has(t.phone)) map.set(t.phone, { phone: t.phone, name: t.name || t.phone, party: t.party, sub: t.party });
+    const last = (p) => (S.threads.find((t) => t.phone === p)?.updatedAt) || '';
+    return [...map.values()].sort((a, b) => last(b.phone).localeCompare(last(a.phone)));
+  }
+  const threadOf = (phone) => S.threads.find((t) => t.phone === phone);
+  const activeCall = (phone) => S.calls.find((c) => c.phone === phone && (c.status === 'ringing' || c.status === 'in_progress'));
+
+  // -------------------------------------------------------------- render
+  function render() {
+    $('mode').textContent = S.mode; $('mode').className = 'badge mode-' + S.mode;
+    $('company').textContent = `${S.company} · AI dispatcher "${S.agentName}" · ${S.store} store`;
+    $('clock').textContent = S.clock.time;
+    $('demoControls').classList.toggle('hidden', S.mode !== 'demo');
+    $('syncSheet').classList.toggle('hidden', !S.sheet);
+    renderGuide(); renderKpis(); renderDeliveries(); renderAlerts(); renderContacts(); renderPhone();
+  }
+
+  function renderGuide() {
+    const g = $('guide');
+    if (S.mode !== 'demo') { g.innerHTML = ''; g.append(el('span', { textContent: 'Live mode: messages and calls go to real phones through Twilio. Rules run every minute.' })); return; }
+    g.replaceChildren();
+    if (!S.deliveries.length) {
+      g.append(el('b', { textContent: 'Demo: ' }), 'press "Start demo day" to load a morning at a Pune building-materials transporter (5 trucks). Then move the clock and reply as clients and drivers on the right.');
+      return;
+    }
+    const ringing = S.calls.find((c) => c.status === 'ringing');
+    const unanswered = S.threads.find((t) => t.messages.length && t.messages[t.messages.length - 1].direction === 'out' && t.messages[t.messages.length - 1].channel === 'whatsapp');
+    if (ringing) g.append(el('b', { textContent: 'Escalation call: ' }), `the bot is calling ${ringing.phone === selected ? 'this contact' : nameOf(ringing.phone)} because WhatsApp got no reply. Open their chat and press Answer to talk to it (type what you'd say).`);
+    else if (unanswered) g.append(el('b', { textContent: 'Try it: ' }), `the bot messaged ${nameOf(unanswered.phone)}. Open their chat and reply as them, in any language: e.g. "haan site ready hai", "traffic hai, 45 min lagega", "truck ka tyre puncture ho gaya". Or ignore it and add +30 min to see the bot call them.`);
+    else g.append(el('b', { textContent: 'Next: ' }), 'move the clock forward. The bot asks clients to confirm 2 hours before delivery and checks on drivers when an ETA is due or missed.');
+  }
+  const nameOf = (phone) => contacts().find((c) => c.phone === phone)?.name || phone;
+
+  function renderKpis() {
+    const ds = S.deliveries;
+    const count = (f) => ds.filter(f).length;
+    const msgsOut = S.threads.reduce((n, t) => n + t.messages.filter((m) => m.direction === 'out' && m.channel !== 'system').length, 0);
+    const k = [
+      [count((d) => ['en_route', 'delayed', 'arrived'].includes(d.status)), 'Trucks on the road'],
+      [count((d) => d.status === 'delayed' || d.status === 'issue'), 'Need attention'],
+      [count((d) => d.clientConfirmedAt), 'Clients confirmed'],
+      [msgsOut, 'Messages & call lines handled by AI'],
+    ];
+    $('kpis').replaceChildren(...k.map(([n, l]) => el('div', { className: 'kpi' }, el('div', { className: 'n', textContent: String(n) }), el('div', { className: 'l', textContent: l }))));
+  }
+
+  function renderDeliveries() {
+    $('dCount').textContent = S.deliveries.length;
+    if (!S.deliveries.length) return $('deliveries').replaceChildren(el('div', { className: 'empty', textContent: S.mode === 'demo' ? 'No deliveries yet. Press "Start demo day".' : 'No deliveries yet. Add rows to the Google Sheet or POST /api/deliveries.' }));
+    $('deliveries').replaceChildren(...S.deliveries.map((d) => {
+      const lateMin = d.eta ? Math.round((Date.parse(d.eta) - Date.parse(d.plannedAt)) / 60000) : 0;
+      const card = el('div', { className: 'dl' },
+        el('div', {}, el('span', { className: 'order', textContent: d.orderNo }), ' ', el('span', { className: 'what', textContent: `· ${d.material}` })),
+        el('span', { className: 'status', textContent: STATUS_LABEL[d.status] || d.status, style: `background:var(--s-${d.status});color:var(--s-${d.status}-ink)` }),
+        el('div', { className: 'row' },
+          el('span', {}, '🏗 ', el('b', { textContent: d.client.name }), ` · ${d.site.name}`),
+          el('span', {}, '🚚 ', el('b', { textContent: d.truck }), ` · ${d.driver.name}`)),
+        el('div', { className: 'row' },
+          el('span', { textContent: `Planned ${fmt(d.plannedAt)}` }),
+          d.eta && d.eta !== d.plannedAt ? el('span', { className: lateMin >= 20 ? 'late' : '', textContent: `ETA ${fmt(d.eta)}${lateMin > 0 ? ` (+${lateMin} min)` : ''}` }) : null,
+          d.lastLocation ? el('span', { textContent: `📍 ${d.lastLocation}` }) : null,
+          d.site.contact ? el('span', { textContent: `☎ Site: ${d.site.contact}` }) : null,
+          d.rescheduledTo ? el('span', { className: 'late', textContent: `Asked for ${fmt(d.rescheduledTo)}` }) : null),
+        d.issue ? el('div', { className: 'row issue', textContent: `⚠ ${d.issue}` }) : null,
+        el('div', { className: 'row' },
+          chatLink(d.client.phone, `Chat with client`),
+          chatLink(d.driver.phone, `Chat with driver`)));
+      if (prevStatus.has(d.id) && prevStatus.get(d.id) !== d.status) card.classList.add('flash');
+      prevStatus.set(d.id, d.status);
+      return card;
+    }));
+  }
+  function chatLink(phone, label) {
+    const b = el('button', { className: 'link', textContent: label, type: 'button' });
+    b.addEventListener('click', () => { selected = phone; selectTab('side'); render(); });
+    return b;
+  }
+
+  function renderAlerts() {
+    const open = S.alerts.filter((a) => !a.resolved);
+    $('aCount').textContent = open.length;
+    if (!S.alerts.length) return $('alerts').replaceChildren(el('div', { className: 'empty', style: 'padding:10px', textContent: 'No alerts. The bot raises one when a human is needed.' }));
+    const sorted = [...S.alerts].sort((a, b) => (a.resolved === b.resolved ? b.at.localeCompare(a.at) : a.resolved ? 1 : -1));
+    $('alerts').replaceChildren(...sorted.map((a) => {
+      const x = el('button', { className: 'x', textContent: a.resolved ? 'Done' : 'Resolve', disabled: !!a.resolved, type: 'button' });
+      x.addEventListener('click', async () => { await api('/api/alerts/resolve', { id: a.id }); refresh(); });
+      return el('div', { className: `alert ${a.severity}${a.resolved ? ' resolved' : ''}` },
+        el('span', { className: 't', textContent: fmt(a.at) }), el('span', { textContent: a.text }), x);
+    }));
+  }
+
+  function renderContacts() {
+    const cs = contacts();
+    if (!selected && cs.length) selected = cs[0].phone;
+    $('contacts').replaceChildren(...cs.map((c) => {
+      const b = el('button', { className: 'contact', type: 'button', textContent: `${c.party === 'driver' ? '🚚' : c.party === 'client' ? '🏗' : '👤'} ${c.name}` });
+      b.setAttribute('aria-pressed', String(c.phone === selected));
+      if (activeCall(c.phone)) b.append(el('span', { className: 'dot', title: 'Call' }));
+      b.addEventListener('click', () => { selected = c.phone; render(); });
+      return b;
+    }));
+  }
+
+  function renderPhone() {
+    const box = $('phone');
+    const c = contacts().find((x) => x.phone === selected);
+    if (!c) return box.replaceChildren(el('div', { className: 'empty', style: 'margin:auto', textContent: 'Pick a contact above to see their chat.' }));
+    const t = threadOf(c.phone);
+    const call = activeCall(c.phone);
+    const head = el('div', { className: 'phone-head' },
+      el('div', { className: 'avatar', textContent: c.name.slice(0, 1) }),
+      el('div', { className: 'who' }, document.createTextNode(c.name), el('small', { textContent: `${c.sub} · ${c.phone}` })));
+    const chat = el('div', { className: 'chat', id: 'chatScroll' });
+    for (const m of t?.messages || []) {
+      if (m.channel === 'system') { chat.append(el('div', { className: 'sys', textContent: `${m.text} · ${fmt(m.at)}` })); continue; }
+      // In the phone view, the contact's own messages are "out" (green), the bot's are "in".
+      const mine = m.direction === 'in';
+      chat.append(el('div', { className: `bubble${mine ? ' out' : ''}${m.channel === 'call' ? ' call' : ''}` },
+        el('span', { dir: 'auto', textContent: (m.channel === 'call' ? (mine ? '🗣 ' : '🔊 ') : '') + m.text }),
+        el('span', { className: 'meta', textContent: `${m.direction === 'out' ? (S.agentName + ' (AI)') : ''} ${fmt(m.at)}` })));
+    }
+    if (!t?.messages?.length) chat.append(el('div', { className: 'sys', textContent: 'No messages yet' }));
+    if (typing.has(c.phone)) chat.append(el('div', { className: 'typing', textContent: `${S.agentName} is typing…` }));
+
+    const parts = [head];
+    if (call && call.status === 'ringing' && S.mode === 'demo') {
+      const ans = el('button', { className: 'ans', textContent: 'Answer', type: 'button' });
+      const dec = el('button', { className: 'dec', textContent: 'Decline', type: 'button' });
+      ans.addEventListener('click', () => callAction({ callId: call.id, speech: null }, c.phone));
+      dec.addEventListener('click', () => callAction({ callId: call.id, hangup: true, decline: true }, c.phone));
+      parts.push(el('div', { className: 'ring' }, el('b', { textContent: `📞 Incoming call from ${S.company} dispatch` }), ans, dec));
+    } else if (call && call.status === 'in_progress') {
+      const end = el('button', { textContent: 'Hang up', type: 'button' });
+      end.addEventListener('click', () => callAction({ callId: call.id, hangup: true }, c.phone));
+      parts.push(el('div', { className: 'incall' }, el('span', { textContent: `🔊 On a call with ${S.agentName} (AI). Type what you'd say.` }), end));
+    }
+    parts.push(chat);
+
+    if (S.mode === 'demo') {
+      const input = el('input', { placeholder: call?.status === 'in_progress' ? `Say something as ${c.name}…` : `Reply as ${c.name}…`, dir: 'auto', autocomplete: 'off' });
+      const send = el('button', { className: 'primary', textContent: 'Send', type: 'submit' });
+      const form = el('form', { className: 'composer' }, input, send);
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = input.value.trim(); if (!text) return; input.value = '';
+        if (call?.status === 'in_progress') callAction({ callId: call.id, speech: text }, c.phone);
+        else demoSend(c.phone, text);
+      });
+      parts.push(form);
+    } else {
+      parts.push(el('div', { className: 'composer sub', textContent: 'Live mode: this is the real WhatsApp conversation.' }));
+    }
+    const keep = document.activeElement && document.activeElement.tagName === 'INPUT' && box.contains(document.activeElement) ? document.activeElement.value : null;
+    box.replaceChildren(...parts);
+    chat.scrollTop = chat.scrollHeight;
+    if (keep !== null) { const i = box.querySelector('input'); i.value = keep; i.focus(); }
+  }
+
+  // ------------------------------------------------------------ actions
+  async function demoSend(phone, text) {
+    // Show the message straight away; the server returns the bot's reply.
+    const t = threadOf(phone) || (S.threads.push({ phone, messages: [] }), threadOf(phone));
+    t.messages.push({ direction: 'in', channel: 'whatsapp', text, at: S.clock.now });
+    typing.add(phone); renderPhone();
+    try { await api('/api/demo/message', { phone, text }); }
+    catch (e) { alert(e.message); }
+    finally { typing.delete(phone); refresh(); }
+  }
+  async function callAction(body, phone) {
+    typing.add(phone); renderPhone();
+    try { await api('/api/demo/call', body); }
+    catch (e) { alert(e.message); }
+    finally { typing.delete(phone); refresh(); }
+  }
+  async function control(path, body, btn) {
+    if (busy) return; busy = true;
+    document.querySelectorAll('header button').forEach((b) => (b.disabled = true));
+    if (btn) btn.dataset.label = btn.textContent, btn.textContent = '…';
+    try { const r = await api(path, body || {}); if (r.deliveries) { S = r; render(); } }
+    catch (e) { alert(e.message); }
+    finally { busy = false; document.querySelectorAll('header button').forEach((b) => (b.disabled = false)); if (btn) btn.textContent = btn.dataset.label; refresh(); }
+  }
+  $('startDemo').addEventListener('click', (e) => { selected = ''; control('/api/demo/start', {}, e.target); });
+  document.querySelectorAll('[data-adv]').forEach((b) => b.addEventListener('click', () => control('/api/demo/advance', { minutes: Number(b.dataset.adv) }, b)));
+  $('runRules').addEventListener('click', (e) => control('/api/tick', {}, e.target));
+  $('syncSheet').addEventListener('click', (e) => control('/api/sync', {}, e.target));
+
+  function selectTab(name) {
+    document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+    document.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('active', p.dataset.pane === name));
+  }
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
+
+  // ---------------------------------------------------------------- boot
+  (async () => {
+    if (!key) return showLogin('');
+    try { S = await api('/api/state'); $('app').classList.remove('hidden'); render(); }
+    catch (e) { return showLogin(e.message); }
+    setInterval(() => { if (!busy && !document.hidden) refresh(); }, 2500);
+  })();
+})();
+</script>
+</body>
+</html>
