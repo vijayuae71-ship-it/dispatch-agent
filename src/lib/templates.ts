@@ -1,4 +1,5 @@
 import { config } from './config';
+import { industryOf } from './industries';
 import { fmtDateTime, fmtTime } from './clock';
 import type { Delivery } from './types';
 
@@ -14,15 +15,23 @@ import type { Delivery } from './types';
 export type TemplateName = 'client_confirm' | 'driver_eta' | 'dispatcher_alert' | 'client_update' | 'driver_trip';
 type Lang = 'en' | 'hi';
 
-const TEXT: Record<TemplateName, Record<Lang, string>> = {
-  client_confirm: {
-    en: 'Hello {{1}}, this is {{2}} dispatch. Your order {{3}} ({{4}}) is planned to reach {{5}} around {{6}} on truck {{7}}. Please reply to confirm you are ready to receive it, and share the contact number at the location if it has changed.',
-    hi: 'Namaste {{1}}, {{2}} dispatch se. Aapka order {{3}} ({{4}}) {{5}} par lagbhag {{6}} baje truck {{7}} se pahunchega. Kripya reply karke confirm karein ki aap delivery lene ke liye ready hain, aur location ka contact number badla ho to bata dein.',
-  },
-  driver_eta: {
-    en: 'Hello {{1}}, {{2}} dispatch here. Order {{3}} to {{4}}, truck {{5}}: where are you now and what time will you reach? Please reply when safely stopped.',
-    hi: 'Namaste {{1}}, {{2}} dispatch se. Order {{3}}, {{4}} ke liye, truck {{5}}: abhi aap kahan ho aur kitne baje pahunchoge? Gaadi rok kar reply karein.',
-  },
+/** Texts for the company's industry (the confirm and check-in questions differ by industry). */
+function texts(industry = config().industry): Record<TemplateName, Record<Lang, string>> {
+  const ind = industryOf(industry);
+  return {
+    client_confirm: {
+      en: `Hello {{1}}, this is {{2}} dispatch. Your order {{3}} ({{4}}) is planned to reach {{5}} around {{6}} on truck {{7}}. ${ind.confirmAsk.en}`,
+      hi: `Namaste {{1}}, {{2}} dispatch se. Aapka order {{3}} ({{4}}) {{5}} par lagbhag {{6}} baje truck {{7}} se pahunchega. ${ind.confirmAsk.hi}`,
+    },
+    driver_eta: {
+      en: `Hello {{1}}, {{2}} dispatch here. Order {{3}} to {{4}}, truck {{5}}: ${ind.driverAsk.en} Please reply when safely stopped.`,
+      hi: `Namaste {{1}}, {{2}} dispatch se. Order {{3}}, {{4}} ke liye, truck {{5}}: ${ind.driverAsk.hi} Gaadi rok kar reply karein.`,
+    },
+    ...FIXED,
+  };
+}
+
+const FIXED: Omit<Record<TemplateName, Record<Lang, string>>, 'client_confirm' | 'driver_eta'> = {
   dispatcher_alert: {
     en: '⚠️ {{1}}',
     hi: '⚠️ {{1}}',
@@ -68,9 +77,16 @@ export function templateVars(name: TemplateName, d: Delivery | null, extra?: str
 
 export function renderTemplate(name: TemplateName, language: string | undefined, vars: string[]): { text: string; envKey: string; lang: Lang } {
   const lang = langOf(language);
-  const text = TEXT[name][lang].replace(/\{\{(\d+)\}\}/g, (_, n) => vars[Number(n) - 1] ?? '');
+  const text = texts()[name][lang].replace(/\{\{(\d+)\}\}/g, (_, n) => vars[Number(n) - 1] ?? '');
   return { text, envKey: `TEMPLATE_${name.toUpperCase()}_${lang.toUpperCase()}`, lang };
 }
 
-/** All template texts, for the README and the Twilio template set-up. */
-export const ALL_TEMPLATES = TEXT;
+/** Every template to register with WhatsApp for an industry: env var name → text with {{n}} placeholders. */
+export function templatesFor(industry: string): { envKey: string; text: string }[] {
+  const t = texts(industry as never);
+  return (Object.keys(t) as TemplateName[]).flatMap((name) =>
+    (['en', 'hi'] as Lang[])
+      .filter((l) => !(name === 'dispatcher_alert' && l === 'hi'))
+      .map((l) => ({ envKey: `TEMPLATE_${name.toUpperCase()}_${l.toUpperCase()}`, text: t[name][l] })),
+  );
+}

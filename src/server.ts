@@ -21,8 +21,8 @@ import { twilioRequestOk } from './lib/twilio';
 import { tick } from './lib/engine';
 import { isDemo } from './lib/outbox';
 import { sheetConfigured, syncSheet } from './lib/sheets';
-import { loadConfig } from './lib/config';
-import { storeKind } from './lib/store';
+import { applySettings, loadConfig } from './lib/config';
+import { getSettings, storeKind } from './lib/store';
 
 const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY = 1_000_000;
@@ -39,6 +39,8 @@ const twilioRoutes: Record<string, Handler> = {
 };
 const adminRoutes: Record<string, { method: string; fn: Handler }> = {
   '/api/state': { method: 'GET', fn: routes.state },
+  '/api/setup': { method: 'GET', fn: routes.getSetup },
+  '/api/setup/save': { method: 'POST', fn: routes.postSetup },
   '/api/deliveries': { method: 'POST', fn: routes.upsertDeliveries },
   '/api/alerts/resolve': { method: 'POST', fn: routes.resolve },
   '/api/alerts/assign': { method: 'POST', fn: routes.assign },
@@ -152,4 +154,8 @@ if (isDemo() && storeKind() !== 'memory') {
   console.warn('Demo mode with Firestore: demo controls are disabled. Set STORE=memory for demos, or MODE=live for production.');
 }
 
-server.listen(PORT, () => console.log(`dispatch-agent (${isDemo() ? 'demo' : 'live'}, ${storeKind()} store) listening on :${PORT}`));
+// Apply the company's onboarding settings (industry, region, clerks…) before taking traffic.
+getSettings()
+  .then((s) => s && applySettings(s))
+  .catch((e) => console.error('settings: could not load, using defaults:', e.message))
+  .finally(() => server.listen(PORT, () => console.log(`dispatch-agent (${isDemo() ? 'demo' : 'live'}, ${storeKind()} store) listening on :${PORT}`)));

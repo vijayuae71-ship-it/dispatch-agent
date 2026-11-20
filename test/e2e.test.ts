@@ -327,5 +327,43 @@ test('FMCG scenario: same product, different industry', async () => {
   assert.ok(s.scenarios.some((x: any) => x.id === 'fmcg'));
   assert.equal((await api('/api/demo/start', { scenario: 'nope' })).status, 400);
   // The bot's first message uses neutral wording, not construction terms.
-  assert.match(thread(s, '+919000000303').messages[0].text, /ready to receive/);
+  assert.match(thread(s, '+919000000303').messages[0].text, /to receive and count the goods/); // FMCG wording
+});
+
+// Keep last: it changes the company settings for this server.
+test('one-time setup tailors the bot to the industry and region', async () => {
+  let g = (await api('/api/setup')).json;
+  assert.equal(g.industries.length, 6);
+  assert.equal((await api('/api/setup/save', { industry: 'cold_chain' })).status, 400, 'company is required');
+  assert.equal((await api('/api/setup/save', { company: 'X', industry: 'rockets' })).status, 400);
+  assert.equal((await api('/api/setup/save', { company: 'X', industry: 'fmcg', clerks: [{ name: 'Ana', phone: 'abc' }] })).status, 400);
+
+  const r = (
+    await api('/api/setup/save', {
+      company: 'Frosty Logistics',
+      agentName: 'Sara',
+      industry: 'cold_chain',
+      region: 'AE',
+      clerks: [{ name: 'Rahul', phone: '050 123 4567' }],
+    })
+  ).json;
+  assert.equal(r.settings.dispatchers[0].phone, '+971501234567', 'local UAE number normalised');
+  assert.match(r.settings.businessDescription, /temperature-controlled/, 'description pre-filled from the industry');
+  assert.ok(r.templates.some((t: any) => /reefer temperature/.test(t.text)));
+  g = (await api('/api/setup')).json;
+  assert.ok(g.settings.setupAt);
+  const s = (await api('/api/state')).json;
+  assert.equal(s.industry.label, 'Cold chain (food & pharma)');
+  assert.equal(s.company, 'Frosty Logistics');
+
+  // A driver check-in now asks for the reefer temperature.
+  // Use the server's clock: earlier demo tests moved it.
+  const soon = new Date(Date.parse(s.clock.now) + 10 * 60_000).toISOString();
+  await api('/api/deliveries', {
+    deliveries: [{ id: 'CC-1', material: '40 boxes vaccines', truck: 'DXB-12345', plannedAt: soon, status: 'en_route',
+      client: { name: 'City Hospital', phone: '+971500000001' }, driver: { name: 'Ali', phone: '+971500000002', language: 'en-US' }, site: { name: 'City Hospital pharmacy' } }],
+  });
+  await api('/api/tick', {});
+  const t = (await api('/api/state')).json.threads.find((x: any) => x.phone === '+971500000002');
+  assert.match(t.messages.at(-1).text, /reefer temperature/);
 });

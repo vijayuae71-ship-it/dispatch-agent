@@ -12,6 +12,28 @@ An AI dispatcher for any logistics operation: building materials, FMCG distribut
 - **Languages:** Hindi and Hinglish, English, Marathi, Tamil, Telugu, Kannada, Bengali, Punjabi, Gujarati and Malayalam. The bot replies the way the person writes, including Roman-script Hinglish.
 - **Order feed:** a Google Sheet the dispatcher already knows, or a JSON API for a transport-management system. Statuses are written back to the sheet.
 
+## One-time setup (⚙ Setup)
+
+The first time the console opens in live mode, a short wizard asks for:
+- company and assistant name;
+- **industry**: Construction materials · FMCG & retail distribution · Cold chain (food & pharma) · E-commerce & parcels · Tankers & bulk liquids · General freight;
+- **region**: India or UAE, which sets the country code, time zone and languages;
+- a one-line business description (pre-filled from the industry);
+- the dispatch clerks.
+
+The industry tailors what the bot asks and what it treats as urgent:
+
+| Industry | Asks the customer | Asks the driver | Critical |
+|---|---|---|---|
+| Construction | site ready to unload (access, labour, equipment)? | ETA to site | site refuses entry, breakdown |
+| FMCG | someone at the store to receive and count? | ETA to store | (shortages and damage are warnings) |
+| Cold chain | someone to move it into cold storage at once? | ETA **and reefer temperature** | temperature out of range, reefer fault |
+| E-commerce | someone available at the address, or a better time? | ETA to address | (address problems are warnings) |
+| Tankers | receiving tank has space, unloading point ready? | ETA to unloading point | leak, spill, gas, fire, no tank space |
+| General freight | ready to receive? | ETA | breakdown, refused delivery |
+
+After saving, the wizard lists the exact WhatsApp templates to register for that industry. Settings are stored in the database (Firestore in live mode) and can be changed any time under ⚙ Setup. In demo mode they're kept in memory, so they reset when the service restarts.
+
 ## Demo in 2 minutes (no Twilio needed)
 
 ```bash
@@ -116,6 +138,8 @@ All `/api/*` endpoints need the header `x-admin-key: $ADMIN_KEY`.
 ```
 GET  /api/state                 board: deliveries, alerts, chats, calls, clock
 POST /api/deliveries            { deliveries: [{ id, material, truck, plannedAt (ISO), client: {name, phone, language?}, driver: {…}, site: {name, area?, contact?} }] }
+GET  /api/setup                  settings, industries, regions, templates for the current industry
+POST /api/setup/save            { company, agentName, industry, region, businessDescription?, clerks: [{ name, phone }] }
 POST /api/deliveries/assign     { ref, truck, driverPhone, driverName?, clerk? }
 POST /api/alerts/assign         { id, clerk }
 POST /api/alerts/resolve        { id, clerk? }
@@ -128,7 +152,7 @@ POST /api/demo/start | advance { minutes } | message { phone, text } | call { ca
 
 ```bash
 npm run typecheck
-npm test     # 24 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
+npm test     # 27 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
 ```
 
 | Path | What |
@@ -138,7 +162,8 @@ npm test     # 24 tests, no keys or network: rules, sheet parsing, templates, a 
 | `src/lib/agent.ts` | Claude: WhatsApp replies (structured outputs) and streamed voice turns |
 | `src/relay.ts` | ConversationRelay WebSocket (barge-in, language switching) |
 | `src/lib/sheets.ts` | Google Sheet sync |
-| `src/lib/templates.ts` | First-contact WhatsApp templates |
+| `src/lib/templates.ts` | WhatsApp templates (wording per industry) |
+| `src/lib/industries.ts` | Industry profiles and region presets |
 | `public/console.html` | The console |
 
 ## Status and limits

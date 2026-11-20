@@ -128,6 +128,25 @@
   .err { color: var(--crit); }
   .login { max-width: 380px; margin: 70px auto; }
   .typing { align-self: flex-start; font-size: 12px; color: var(--muted); padding: 2px 6px; }
+  .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); overflow-y: auto; padding: 24px 12px; }
+  .modal { max-width: 640px; margin: 0 auto 24px; }
+  .modal h2 { font-size: 18px; margin: 0 0 4px; }
+  .modal label.f2 { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; margin-top: 12px; }
+  .modal input, .modal select, .modal textarea { font-weight: 400; width: 100%; }
+  .modal textarea { font-family: inherit; font-size: 14px; }
+  .modal fieldset { border: 0; padding: 0; margin: 14px 0 0; }
+  .modal legend { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .choices { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .choice { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+  .choice input { width: auto; margin-top: 3px; }
+  .choice:has(input:checked) { border-color: var(--accent); background: var(--soft); }
+  .choice small { display: block; color: var(--muted); font-size: 11.5px; }
+  .clerkrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px; margin-bottom: 6px; }
+  .clerkrow button { padding: 4px 10px; }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .tpl { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 13px; }
+  .tpl code { font-weight: 700; font-size: 12px; }
+  .tpl div { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
   .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   .kpi .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -163,6 +182,9 @@
       <button data-adv="15">+15 min</button>
       <button data-adv="30">+30 min</button>
       <button data-adv="60">+1 hour</button>
+    </div>
+    <div class="controls">
+      <button id="openSetup" title="Company, industry, region and clerks">⚙ Setup</button>
     </div>
     <div class="controls" id="liveControls">
       <button id="runRules">Run rules now</button>
@@ -200,6 +222,29 @@
   </main>
 </div>
 
+<div id="setupOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <form id="setupForm" class="card modal">
+    <h2 id="setupTitle">Set up your dispatcher</h2>
+    <p class="sub">A one-time setup. The bot's messages, questions and what it treats as urgent are tailored to your industry. You can change this later under ⚙ Setup.</p>
+    <label class="f2">Company name <input name="company" required maxlength="80" autocomplete="organization"></label>
+    <label class="f2">Assistant's name <input name="agentName" maxlength="40" placeholder="Asha"></label>
+    <fieldset><legend>Industry</legend><div id="industryChoices" class="choices"></div></fieldset>
+    <label class="f2">Region <select name="region" id="regionSel"></select></label>
+    <label class="f2">What you deliver, in one line <textarea name="businessDescription" id="bizDesc" rows="2" maxlength="300"></textarea></label>
+    <fieldset><legend>Dispatch clerks: they get alerts on WhatsApp</legend><div id="clerkRows"></div>
+      <button type="button" class="link" id="addClerk">+ Add clerk</button></fieldset>
+    <p id="setupErr" class="err"></p>
+    <div class="actions"><button type="button" id="setupCancel">Cancel</button><button class="primary" id="setupSave">Save setup</button></div>
+  </form>
+  <div id="setupDone" class="card modal hidden">
+    <h2>✅ Setup saved</h2>
+    <p>Messages are now tailored for <b id="doneIndustry"></b>.</p>
+    <p class="sub">To go live, register these WhatsApp templates once in Twilio (Content Template Builder, category <b>Utility</b>), then put each one's Content SID in the environment variable shown. The demo doesn't need them.</p>
+    <div id="templateList"></div>
+    <div class="actions"><button class="primary" id="setupClose" type="button">Done</button></div>
+  </div>
+</div>
+
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -230,7 +275,7 @@
   function showLogin(msg) { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('loginErr').textContent = msg || ''; }
   $('login').addEventListener('submit', async (e) => {
     e.preventDefault(); key = $('key').value.trim(); store.set(key);
-    try { S = await api('/api/state'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); }
+    try { S = await api('/api/state'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); if (S.mode === 'live' && !S.setupAt) openSetup(); }
     catch (err) { showLogin(err.message); }
   });
 
@@ -253,7 +298,7 @@
   // -------------------------------------------------------------- render
   function render() {
     $('mode').textContent = S.mode; $('mode').className = 'badge mode-' + S.mode;
-    $('company').textContent = `${S.company} · AI dispatcher "${S.agentName}" · ${S.store} store`;
+    $('company').textContent = `${S.company} · ${S.industry?.label || ''} · AI dispatcher "${S.agentName}"`;
     $('clock').textContent = S.clock.time;
     $('demoControls').classList.toggle('hidden', S.mode !== 'demo');
     const sc = $('scenario');
@@ -270,7 +315,7 @@
     if (S.mode !== 'demo') { g.innerHTML = ''; g.append(el('span', { textContent: 'Live mode: messages and calls go to real phones through Twilio. Rules run every minute.' })); return; }
     g.replaceChildren();
     if (!S.deliveries.length) {
-      g.append(el('b', { textContent: 'Demo: ' }), 'pick an industry and press "Start demo day" to load a morning with 5 trucks. Then move the clock and reply as customers, drivers and clerks on the right.');
+      g.append(el('b', { textContent: 'Demo: ' }), 'pick an industry and press "Start demo day" to load a morning with 5 trucks. Then move the clock and reply as customers, drivers and clerks on the right.', S.setupAt ? '' : ' Tip: ⚙ Setup tailors every message to your own industry and region.');
       return;
     }
     const ringing = S.calls.find((c) => c.status === 'ringing');
@@ -298,7 +343,7 @@
     const k = [
       [count((d) => ['en_route', 'delayed', 'arrived'].includes(d.status)), 'Trucks on the road'],
       [count((d) => d.status === 'delayed' || d.status === 'issue'), 'Need attention'],
-      [count((d) => d.clientConfirmedAt), 'Clients confirmed'],
+      [count((d) => d.clientConfirmedAt), 'Customers confirmed'],
       [msgsOut, 'Messages & call lines handled by AI'],
     ];
     $('kpis').replaceChildren(...k.map(([n, l]) => el('div', { className: 'kpi' }, el('div', { className: 'n', textContent: String(n) }), el('div', { className: 'l', textContent: l }))));
@@ -516,11 +561,68 @@
   }
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
 
+  // --------------------------------------------------------------- setup
+  let setupData = null;
+  let descEdited = false;
+  function clerkRow(c = { name: '', phone: '' }) {
+    const name = el('input', { placeholder: 'Name', value: c.name, autocomplete: 'off' });
+    const phone = el('input', { placeholder: 'WhatsApp number', value: c.phone, inputMode: 'tel', autocomplete: 'off' });
+    const rm = el('button', { type: 'button', textContent: '✕', title: 'Remove' });
+    const row = el('div', { className: 'clerkrow' }, name, phone, rm);
+    rm.addEventListener('click', () => row.remove());
+    return row;
+  }
+  async function openSetup() {
+    try { setupData = await api('/api/setup'); } catch (e) { return alert(e.message); }
+    const st = setupData.settings;
+    const f = $('setupForm');
+    f.company.value = st.setupAt ? st.company : '';
+    f.agentName.value = st.agentName || 'Asha';
+    $('industryChoices').replaceChildren(...setupData.industries.map((i) => {
+      const r = el('input', { type: 'radio', name: 'industry', value: i.id, checked: st.setupAt ? i.id === st.industry : false, required: true });
+      r.addEventListener('change', () => { if (!descEdited) $('bizDesc').value = i.description; });
+      return el('label', { className: 'choice' }, r, el('span', {}, document.createTextNode(i.label), el('small', { textContent: i.description })));
+    }));
+    $('regionSel').replaceChildren(...setupData.regions.map((r) => el('option', { value: r.id, textContent: r.label, selected: r.id === st.region })));
+    $('bizDesc').value = st.businessDescription || '';
+    descEdited = !!(st.setupAt && st.businessDescription);
+    const rows = (st.setupAt ? st.dispatchers : []).map(clerkRow);
+    while (rows.length < 3) rows.push(clerkRow());
+    $('clerkRows').replaceChildren(...rows);
+    $('setupErr').textContent = '';
+    $('setupForm').classList.remove('hidden');
+    $('setupDone').classList.add('hidden');
+    $('setupOverlay').classList.remove('hidden');
+    f.company.focus();
+  }
+  $('bizDesc').addEventListener('input', () => { descEdited = true; });
+  $('addClerk').addEventListener('click', () => $('clerkRows').append(clerkRow()));
+  $('openSetup').addEventListener('click', openSetup);
+  $('setupCancel').addEventListener('click', () => $('setupOverlay').classList.add('hidden'));
+  $('setupClose').addEventListener('click', () => { $('setupOverlay').classList.add('hidden'); refresh(); });
+  $('setupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const clerks = [...$('clerkRows').children].map((r) => ({ name: r.children[0].value.trim(), phone: r.children[1].value.trim() })).filter((c) => c.name || c.phone);
+    $('setupSave').disabled = true;
+    $('setupErr').textContent = '';
+    try {
+      const r = await api('/api/setup/save', { company: f.company.value, agentName: f.agentName.value, industry: f.industry.value, region: f.region.value, businessDescription: f.businessDescription.value, clerks });
+      $('doneIndustry').textContent = setupData.industries.find((i) => i.id === r.settings.industry)?.label || r.settings.industry;
+      $('templateList').replaceChildren(...r.templates.map((t) => el('div', { className: 'tpl' }, el('code', { textContent: t.envKey }), el('div', { dir: 'auto', textContent: t.text }))));
+      $('setupForm').classList.add('hidden');
+      $('setupDone').classList.remove('hidden');
+      try { if (r.settings.industry === 'construction' || r.settings.industry === 'fmcg') localStorage.setItem('dispatch_scenario', r.settings.industry); } catch {}
+    } catch (err) { $('setupErr').textContent = err.message; }
+    finally { $('setupSave').disabled = false; }
+  });
+
   // ---------------------------------------------------------------- boot
   (async () => {
     if (!key) return showLogin('');
     try { S = await api('/api/state'); $('app').classList.remove('hidden'); render(); }
     catch (e) { return showLogin(e.message); }
+    if (S.mode === 'live' && !S.setupAt) openSetup();
     setInterval(() => { if (!busy && !document.hidden) refresh(); }, 2500);
   })();
 })();

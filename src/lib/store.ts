@@ -171,5 +171,10 @@ export const getCall = async (id: string) => (await backend.get('calls', id)) as
 export const saveCall = (c: CallSession) => backend.set('calls', c.id, clean(c));
 export const listCalls = (limit = 50) => backend.list('calls', 'startedAt', limit) as Promise<CallSession[]>;
 
+// ------------------------------------------------------------------ settings
+
+export const getSettings = async () => (await backend.get('meta', 'settings')) as import('./config').Settings | null;
+export const saveSettings = (s: import('./config').Settings) => backend.set('meta', 'settings', clean(s));
+
 /** Demo only: wipe everything. */
 export const clearAll = () => backend.clear();

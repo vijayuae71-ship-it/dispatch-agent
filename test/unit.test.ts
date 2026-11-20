@@ -141,3 +141,27 @@ test('phone numbers are normalised with the company country code', async () => {
   assert.equal(normalizePhone('0526063475'), '+971526063475');
   config().defaultCountryCode = '+91';
 });
+
+test('templates follow the industry picked in setup', async () => {
+  const { templatesFor } = await import('../src/lib/templates');
+  const find = (ind: string, key: string) => templatesFor(ind).find((t) => t.envKey === key)!.text;
+  assert.match(find('construction', 'TEMPLATE_CLIENT_CONFIRM_EN'), /site is ready to unload/);
+  assert.match(find('cold_chain', 'TEMPLATE_DRIVER_ETA_EN'), /reefer temperature/);
+  assert.match(find('cold_chain', 'TEMPLATE_DRIVER_ETA_HI'), /temperature/);
+  assert.match(find('tankers', 'TEMPLATE_CLIENT_CONFIRM_EN'), /tank has enough space/);
+  assert.match(find('ecommerce', 'TEMPLATE_CLIENT_CONFIRM_EN'), /available at the address/);
+  // Every industry produces the same set of templates (only the wording differs).
+  assert.equal(templatesFor('fmcg').length, templatesFor('general').length);
+});
+
+test('UAE region sets country code, time zone and languages', async () => {
+  const { applySettings, config, normalizePhone } = await import('../src/lib/config');
+  const before = { ...config() };
+  applySettings({ company: 'Gulf Haulage', agentName: 'Sara', industry: 'tankers', region: 'AE', businessDescription: 'water tankers', dispatchers: [], setupAt: '2026-11-20T00:00:00Z' });
+  assert.equal(config().timezone, 'Asia/Dubai');
+  assert.equal(normalizePhone('0526063475'), '+971526063475');
+  assert.ok(config().languages.some((l) => l.code === 'ar-AE'));
+  applySettings({ company: before.company, agentName: before.agentName, industry: 'general', region: 'IN', businessDescription: '', dispatchers: [], setupAt: '' });
+  assert.equal(config().timezone, 'Asia/Kolkata');
+  assert.ok(config().languages.some((l) => l.code === 'mr-IN'), 'India keeps its language set');
+});

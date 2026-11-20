@@ -1,5 +1,7 @@
 import { timingSafeEqual } from 'crypto';
-import { config } from './lib/config';
+import { applySettings, config, normalizePhone, type Settings } from './lib/config';
+import { INDUSTRIES, REGIONS, industryOf } from './lib/industries';
+import { templatesFor } from './lib/templates';
 import { advanceClock, fmtTime, fmtDateTime, now } from './lib/clock';
 import { demoCallTurn, endCall, handleInbound, tick } from './lib/engine';
 import { assignAlert, closeAlert } from './lib/clerks';
@@ -15,6 +17,7 @@ import {
   listCalls,
   listDeliveries,
   listThreads,
+  saveSettings,
   resolveAlert,
   saveDelivery,
   storeKind,
@@ -116,6 +119,8 @@ export async function state(): Promise<Res> {
     agentName: config().agentName,
     languages: config().languages.map((l) => ({ code: l.code, name: l.name })),
     clerks: config().dispatchers,
+    setupAt: config().setupAt || null,
+    industry: { id: config().industry, label: industryOf(config().industry).label },
     scenarios: Object.entries(SCENARIOS).map(([id, s]) => ({ id, label: s.label })),
     sheet: sheetConfigured(),
     clock: { now: now().toISOString(), time: fmtTime(now().toISOString()), label: fmtDateTime(now().toISOString()) },
@@ -261,4 +266,62 @@ export async function demoCall(req: Req): Promise<Res> {
   } catch (err: any) {
     return json(400, { error: err?.message || 'call failed' });
   }
+}
+
+// ------------------------------------------------------------------ setup
+
+function currentSettings() {
+  const c = config();
+  return {
+    company: c.company,
+    agentName: c.agentName,
+    industry: c.industry,
+    region: c.region,
+    businessDescription: c.businessDescription || '',
+    dispatchers: c.dispatchers,
+    setupAt: c.setupAt || null,
+  };
+}
+
+/** What the setup wizard needs: current settings, the choices, and this industry's WhatsApp templates. */
+export async function getSetup(): Promise<Res> {
+  return json(200, {
+    settings: currentSettings(),
+    industries: Object.values(INDUSTRIES).map((i) => ({ id: i.id, label: i.label, description: i.description })),
+    regions: Object.values(REGIONS).map((r) => ({ id: r.id, label: r.label })),
+    templates: templatesFor(config().industry),
+  });
+}
+
+/** One-time onboarding (can be re-run). { company, agentName, industry, region, businessDescription, clerks: [{ name, phone }] } */
+export async function postSetup(req: Req): Promise<Res> {
+  const b = req.json || {};
+  const company = String(b.company || '').trim();
+  const agentName = String(b.agentName || '').trim() || 'Asha';
+  const industry = String(b.industry || '');
+  const region = String(b.region || 'IN');
+  if (!company) return json(400, { error: 'Company name is required.' });
+  if (!(industry in INDUSTRIES)) return json(400, { error: 'Pick an industry.' });
+  if (!(region in REGIONS)) return json(400, { error: 'Pick a region.' });
+  // Normalise clerk numbers with the chosen region's country code.
+  const prevCode = config().defaultCountryCode;
+  config().defaultCountryCode = REGIONS[region as keyof typeof REGIONS].defaultCountryCode;
+  const clerks = (Array.isArray(b.clerks) ? b.clerks : [])
+    .map((c: any) => ({ name: String(c?.name || '').trim(), phone: normalizePhone(String(c?.phone || '')) }))
+    .filter((c: { name: string; phone: string }) => c.name || c.phone);
+  config().defaultCountryCode = prevCode;
+  const bad = clerks.find((c: { name: string; phone: string }) => !c.name || !isE164(c.phone));
+  if (bad) return json(400, { error: `Each clerk needs a name and a valid WhatsApp number (check "${bad.name || bad.phone}").` });
+  const settings: Settings = {
+    company: company.slice(0, 80),
+    agentName: agentName.slice(0, 40),
+    industry: industry as Settings['industry'],
+    region: region as Settings['region'],
+    businessDescription: String(b.businessDescription || INDUSTRIES[industry as keyof typeof INDUSTRIES].description).trim().slice(0, 300),
+    dispatchers: clerks,
+    setupAt: new Date().toISOString(),
+  };
+  await saveSettings(settings);
+  applySettings(settings);
+  return json(200, { ok: true, settings: currentSettings(), templates: templatesFor(settings.industry) });
 }

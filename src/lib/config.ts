@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { INDUSTRIES, REGIONS, type IndustryId, type RegionId } from './industries';
 
 // Company settings live in config/dispatch.json (see the example there).
 // Every timing can also be overridden by an environment variable.
@@ -17,6 +18,11 @@ export interface VoiceLanguage {
 
 export interface DispatchConfig {
   company: string;
+  /** Picked once during setup; tailors templates and the AI. */
+  industry: IndustryId;
+  region: RegionId;
+  /** When onboarding was completed (unset = show the setup wizard). */
+  setupAt?: string;
   /** One line the AI uses for vocabulary, e.g. "bulk cement by bulker to plants and sites" or "FMCG cartons to retail stores". */
   businessDescription?: string;
   /** Name the assistant uses, e.g. "Asha from Sharma Logistics dispatch". */
@@ -49,6 +55,8 @@ export interface DispatchConfig {
 
 const DEFAULTS: DispatchConfig = {
   company: 'Demo Logistics',
+  industry: 'general',
+  region: 'IN',
   agentName: 'Asha',
   timezone: 'Asia/Kolkata',
   defaultCountryCode: '+91',
@@ -107,6 +115,38 @@ export function normalizePhone(raw: string): string {
   const cc = config().defaultCountryCode;
   if (local.length >= 8 && local.length <= 10) return cc + local;
   return '+' + p;
+}
+
+/** What onboarding saves. Stored in the database and applied over the file/env defaults at startup. */
+export interface Settings {
+  company: string;
+  agentName: string;
+  industry: IndustryId;
+  region: RegionId;
+  businessDescription: string;
+  dispatchers: { name: string; phone: string }[];
+  setupAt: string;
+}
+
+let fileLanguages: VoiceLanguage[] | null = null;
+
+export function applySettings(s: Settings) {
+  const cfg = config();
+  if (!fileLanguages) fileLanguages = cfg.languages;
+  const region = REGIONS[s.region] || REGIONS.IN;
+  Object.assign(cfg, {
+    company: s.company,
+    agentName: s.agentName,
+    industry: INDUSTRIES[s.industry] ? s.industry : 'general',
+    region: region.id,
+    businessDescription: s.businessDescription,
+    dispatchers: s.dispatchers,
+    setupAt: s.setupAt,
+    defaultCountryCode: region.defaultCountryCode,
+    timezone: region.timezone,
+    defaultLanguage: region.defaultLanguage,
+    languages: region.languages || fileLanguages,
+  });
 }
 
 export function config(): DispatchConfig {

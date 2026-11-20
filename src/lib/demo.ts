@@ -29,6 +29,8 @@ export async function startDemoDay(scenario: Scenario = 'construction'): Promise
   await clearAll();
   if (!config().dispatchers.length) config().dispatchers = [...DEMO_CLERKS];
   config().businessDescription = SCENARIOS[scenario].description;
+  // The demo day shows its own industry's wording, whatever the company picked in setup.
+  config().industry = scenario;
   setLocalTime(9, 0);
   const deliveries = scenario === 'fmcg' ? fmcgDay() : constructionDay();
   for (const d of deliveries) await saveDelivery(d);

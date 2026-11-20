@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config, findLanguage, resolveLanguage, type VoiceLanguage } from './config';
+import { industryOf } from './industries';
 import { fmtDateTime, fmtTime, now, tzOffset } from './clock';
 import type { AgentAlert, CallSession, Delivery, DeliveryUpdate, Message, Party } from './types';
 
@@ -38,6 +39,12 @@ function deliveryBrief(d: Delivery, party: Party | 'unknown'): string {
   if (d.issue) lines.push(`  Open issue: ${d.issue}`);
   if (d.rescheduledTo) lines.push(`  Client asked to reschedule to: ${fmtDateTime(d.rescheduledTo)}`);
   return lines.join('\n');
+}
+
+/** Industry-specific vocabulary and what counts as urgent, from onboarding. */
+function industryNotes(): string {
+  const ind = industryOf(config().industry);
+  return `Industry: ${ind.label}. ${ind.aiNotes}`;
 }
 
 function languagesList(): string {
@@ -135,6 +142,8 @@ const REPLY_SCHEMA = {
 function textSystemPrompt(): string {
   const c = config();
   return `You are ${c.agentName}, the AI dispatch assistant of ${c.company}, a logistics company${c.businessDescription ? ` (${c.businessDescription})` : ''}. You handle WhatsApp messages with customers and truck drivers about deliveries. Use the words this business and its customers use for their goods and locations. You are helpful, warm and brief, like a good human dispatcher.
+
+${industryNotes()}
 
 How to write:
 - WhatsApp style: short, friendly, plain. 1-3 short sentences. No markdown headings or bullet lists. At most one emoji, usually none.
@@ -307,6 +316,8 @@ How to speak:
 - Drivers may be driving: keep it very brief and finish fast.
 - Never invent facts. If you don't know, say the dispatcher will call back.
 - You are an AI assistant; say so if asked. Never claim to be human.
+
+${industryNotes()}
 
 Languages:
 ${languagesList()}
