@@ -325,3 +325,43 @@ export async function postSetup(req: Req): Promise<Res> {
   applySettings(settings);
   return json(200, { ok: true, settings: currentSettings(), templates: templatesFor(settings.industry) });
 }
+
+// ------------------------------------------------------- prospect view (/watch)
+
+/** Keep the country code and last 3 digits: +91 •••••••210. */
+export function maskPhone(p?: string): string {
+  if (!p) return p || '';
+  const digits = p.replace(/\D/g, '');
+  if (digits.length < 7) return p;
+  const cc = p.startsWith('+') ? (p.match(/^\+(971|91|\d{1,3})/)?.[0] ?? '+') : '';
+  return `${cc ? cc + ' ' : ''}${'•'.repeat(Math.max(3, digits.length - cc.replace('+', '').length - 3))}${digits.slice(-3)}`;
+}
+/** Hide phone numbers written inside messages and alerts too. */
+export const maskText = (s?: string) => (s || '').replace(/\+?\d[\d\s-]{7,}\d/g, (m) => maskPhone(m));
+
+/**
+ * Read-only state for prospects: no key needed, demo mode only (live data is
+ * never shown), phone numbers masked, nothing that can change state.
+ */
+export async function watchState(): Promise<Res> {
+  if (!isDemo() || storeKind() !== 'memory') return json(404, { error: 'The live view is only available for demos.' });
+  const full = JSON.parse((await state()).body);
+  const person = (x: any) => (x ? { ...x, phone: maskPhone(x.phone) } : x);
+  full.clerks = (full.clerks || []).map(person);
+  full.deliveries = full.deliveries.map((d: any) => ({
+    ...d,
+    client: person(d.client),
+    driver: person(d.driver),
+    requestedBy: d.requestedBy ? maskPhone(d.requestedBy) : d.requestedBy,
+    contacts: (d.contacts || []).map(person),
+    site: { ...d.site, contact: d.site?.contact ? maskText(d.site.contact) : d.site?.contact },
+    issue: d.issue ? maskText(d.issue) : d.issue,
+  }));
+  full.alerts = full.alerts.map((a: any) => ({ ...a, text: maskText(a.text) }));
+  full.threads = full.threads.map((t: any) => ({ ...t, phone: maskPhone(t.phone), messages: t.messages.map((m: any) => ({ ...m, phone: maskPhone(m.phone), text: maskText(m.text) })) }));
+  full.calls = full.calls.map((c: any) => ({ id: c.id, phone: maskPhone(c.phone), status: c.status, startedAt: c.startedAt }));
+  delete full.sheet;
+  delete full.store;
+  full.view = true;
+  return json(200, full);
+}

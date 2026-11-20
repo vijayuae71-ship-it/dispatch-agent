@@ -165,3 +165,10 @@ test('UAE region sets country code, time zone and languages', async () => {
   assert.equal(config().timezone, 'Asia/Kolkata');
   assert.ok(config().languages.some((l) => l.code === 'mr-IN'), 'India keeps its language set');
 });
+
+test('prospect view hides phone numbers', async () => {
+  const { maskPhone, maskText } = await import('../src/routes');
+  assert.equal(maskPhone('+919876543210'), '+91 •••••••210');
+  assert.equal(maskPhone('+971526063475'), '+971 ••••••475');
+  assert.equal(maskText('Driver Ramesh, 98765 43210, truck MH12AB1234'), 'Driver Ramesh, •••••••210, truck MH12AB1234');
+});
