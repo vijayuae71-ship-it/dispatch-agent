@@ -48,6 +48,8 @@
   button:disabled { opacity: .5; cursor: default; }
   input { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
   .hidden { display: none !important; }
+  body.view .edit { display: none !important; }
+  .viewbar { background: var(--accent); color: var(--accent-ink); padding: 8px 16px; font-size: 13px; text-align: center; }
   header.top { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   header.top h1 { font-size: 17px; margin: 0; }
   .sub { color: var(--muted); font-size: 12px; }
@@ -169,6 +171,7 @@
 </form>
 
 <div id="app" class="hidden">
+  <div class="viewbar hidden" id="viewbar">👀 Live view of a Dispatch Agent demo. It updates by itself as the day plays out; phone numbers are hidden.</div>
   <header class="top">
     <div>
       <h1>Dispatch Agent <span id="mode" class="badge"></span></h1>
@@ -176,17 +179,17 @@
     </div>
     <div class="clock" id="clock" title="Dispatch clock"></div>
     <div class="spacer"></div>
-    <div class="controls" id="demoControls">
+    <div class="controls edit" id="demoControls">
       <select id="scenario" aria-label="Demo scenario"></select>
       <button id="startDemo" class="primary">▶ Start demo day</button>
       <button data-adv="15">+15 min</button>
       <button data-adv="30">+30 min</button>
       <button data-adv="60">+1 hour</button>
     </div>
-    <div class="controls">
+    <div class="controls edit">
       <button id="openSetup" title="Company, industry, region and clerks">⚙ Setup</button>
     </div>
-    <div class="controls" id="liveControls">
+    <div class="controls edit" id="liveControls">
       <button id="runRules">Run rules now</button>
       <button id="syncSheet" class="hidden">Sync sheet</button>
     </div>
@@ -207,7 +210,7 @@
       <div data-pane="side" style="display:flex;flex-direction:column;gap:14px">
         <section class="card">
           <h2>Dispatcher alerts <span class="count" id="aCount"></span>
-            <label class="whoami">You are <select id="whoami" aria-label="Which clerk are you"></select></label></h2>
+            <label class="whoami edit">You are <select id="whoami" aria-label="Which clerk are you"></select></label></h2>
           <div id="alerts" class="alerts"></div>
         </section>
         <section class="card">
@@ -253,6 +256,9 @@
   const STATUS_LABEL = { requested: 'Needs truck', scheduled: 'Scheduled', confirmed: 'Confirmed', en_route: 'On the way', delayed: 'Delayed', arrived: 'Arrived', delivered: 'Delivered', rescheduled: 'Reschedule asked', issue: 'Issue', cancelled: 'Cancelled' };
   const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
 
+  // /watch: a read-only view for prospects. No key, nothing can be changed.
+  const VIEW = location.pathname.replace(/\/+$/, '') === '/watch';
+  if (VIEW) { document.body.classList.add('view'); $('viewbar').classList.remove('hidden'); document.title = 'Dispatch Agent · live demo'; }
   let key = store.get();
   let S = null;              // last state from the server
   let selected = '';         // selected phone
@@ -261,6 +267,13 @@
   const prevStatus = new Map();
 
   async function api(path, body) {
+    if (VIEW) {
+      if (body) throw new Error('This is a view-only page.');
+      const r = await fetch('/watch/state');
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+      return j;
+    }
     const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: body ? JSON.stringify(body) : undefined });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
@@ -312,6 +325,12 @@
 
   function renderGuide() {
     const g = $('guide');
+    if (VIEW) {
+      g.replaceChildren(el('b', { textContent: 'What you are seeing: ' }), S.deliveries.length
+        ? `a dispatch desk running on autopilot. ${S.agentName}, the AI dispatcher, messages customers and drivers on WhatsApp, calls when nobody replies, keeps the board up to date and sends only real problems to the clerks as numbered alerts. Tap any contact under "WhatsApp & calls" to read their chat.`
+        : 'the demo day hasn\'t started yet. Keep this page open; it fills in by itself once the presenter starts.');
+      return;
+    }
     if (S.mode !== 'demo') { g.innerHTML = ''; g.append(el('span', { textContent: 'Live mode: messages and calls go to real phones through Twilio. Rules run every minute.' })); return; }
     g.replaceChildren();
     if (!S.deliveries.length) {
@@ -371,7 +390,7 @@
           (d.contacts || []).length ? el('span', { textContent: `👥 ${d.contacts.map((c) => c.role ? `${c.name} (${c.role})` : c.name).join(', ')}` }) : null,
           d.rescheduledTo ? el('span', { className: 'late', textContent: `Asked for ${fmt(d.rescheduledTo)}` }) : null),
         d.issue ? el('div', { className: 'row issue', textContent: `⚠ ${d.issue}` }) : null,
-        d.status === 'requested' ? assignForm(d) : null,
+        d.status === 'requested' && !VIEW ? assignForm(d) : null,
         el('div', { className: 'row' },
           chatLink(d.client.phone, `Chat with client`),
           d.driver.phone ? chatLink(d.driver.phone, `Chat with driver`) : null));
@@ -433,7 +452,7 @@
     if (!S.alerts.length) return $('alerts').replaceChildren(el('div', { className: 'empty', style: 'padding:10px', textContent: 'No alerts. The bot raises one when a human is needed, and sends it to every clerk on WhatsApp.' }));
     const sorted = [...S.alerts].sort((a, b) => (a.resolved === b.resolved ? b.at.localeCompare(a.at) : a.resolved ? 1 : -1));
     $('alerts').replaceChildren(...sorted.map((a) => {
-      const acts = el('div', { className: 'acts' });
+      const acts = el('div', { className: 'acts edit' });
       if (!a.resolved && !a.assignedTo) {
         const take = el('button', { className: 'x', textContent: 'Take', type: 'button' });
         take.addEventListener('click', () => alertAction('/api/alerts/assign', a));
@@ -488,7 +507,9 @@
     if (typing.has(c.phone)) chat.append(el('div', { className: 'typing', textContent: `${S.agentName} is typing…` }));
 
     const parts = [head];
-    if (call && call.status === 'ringing' && S.mode === 'demo') {
+    if (call && call.status === 'ringing' && VIEW) {
+      parts.push(el('div', { className: 'ring' }, el('b', { textContent: `📞 ${S.agentName} is calling ${c.name}` })));
+    } else if (call && call.status === 'ringing' && S.mode === 'demo') {
       const ans = el('button', { className: 'ans', textContent: 'Answer', type: 'button' });
       const dec = el('button', { className: 'dec', textContent: 'Decline', type: 'button' });
       ans.addEventListener('click', () => callAction({ callId: call.id, speech: null }, c.phone));
@@ -497,11 +518,13 @@
     } else if (call && call.status === 'in_progress') {
       const end = el('button', { textContent: 'Hang up', type: 'button' });
       end.addEventListener('click', () => callAction({ callId: call.id, hangup: true }, c.phone));
-      parts.push(el('div', { className: 'incall' }, el('span', { textContent: `🔊 On a call with ${S.agentName} (AI). Type what you'd say.` }), end));
+      parts.push(el('div', { className: 'incall' }, el('span', { textContent: VIEW ? `🔊 On a call with ${S.agentName} (AI)` : `🔊 On a call with ${S.agentName} (AI). Type what you'd say.` }), VIEW ? null : end));
     }
     parts.push(chat);
 
-    if (S.mode === 'demo') {
+    if (VIEW) {
+      parts.push(el('div', { className: 'composer sub', textContent: 'View only. Messages appear here as the demo plays.' }));
+    } else if (S.mode === 'demo') {
       const input = el('input', { placeholder: call?.status === 'in_progress' ? `Say something as ${c.name}…` : `Reply as ${c.name}…`, dir: 'auto', autocomplete: 'off' });
       const send = el('button', { className: 'primary', textContent: 'Send', type: 'submit' });
       const form = el('form', { className: 'composer' }, input, send);
@@ -619,6 +642,12 @@
 
   // ---------------------------------------------------------------- boot
   (async () => {
+    if (VIEW) {
+      try { S = await api('/watch/state'); $('app').classList.remove('hidden'); render(); }
+      catch (e) { document.body.replaceChildren(el('div', { className: 'card login' }, el('h1', { style: 'margin-top:0;font-size:20px', textContent: 'Dispatch Agent' }), el('p', { className: 'sub', textContent: e.message }))); return; }
+      setInterval(() => { if (!document.hidden) refresh(); }, 3000);
+      return;
+    }
     if (!key) return showLogin('');
     try { S = await api('/api/state'); $('app').classList.remove('hidden'); render(); }
     catch (e) { return showLogin(e.message); }

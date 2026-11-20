@@ -131,6 +131,10 @@ bash deploy.sh
 
 The service runs as **one instance** (`--max-instances=1`), because the rules engine runs inside it. That comfortably handles hundreds of deliveries a day. Region `us-east4` gives the shortest pauses on calls; `asia-south1` keeps data in India.
 
+## Showing it to prospects
+
+Share `https://<your-service-url>/watch`. It's a **view-only** copy of the console: no admin key, no buttons, and phone numbers are masked (`+91 •••••••210`). It refreshes by itself, so you drive the demo day from the console while prospects watch on their own phone or laptop. It only works in demo mode; in live mode `/watch` shows nothing, so real customer data is never exposed.
+
 ## Auto-deploy on merge
 
 `cloudbuild.yaml` builds the image and rolls the `dispatch-agent` Cloud Run service onto it, changing only the image (mode, secrets and scaling stay as they are). Connect it once with a Cloud Build trigger:

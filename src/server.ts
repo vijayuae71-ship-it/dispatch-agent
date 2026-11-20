@@ -2,6 +2,7 @@
  * Dispatch Agent: one HTTP + WebSocket service.
  *
  *   GET  /                       console (dispatch board, alerts, chats, demo controls)
+ *   GET  /watch                  read-only live view for prospects (demo mode only)
  *   GET  /healthz
  *   POST /twilio/whatsapp        incoming WhatsApp message
  *   POST /twilio/message-status  WhatsApp delivery receipts
@@ -79,7 +80,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const method = req.method || 'GET';
 
-  if (method === 'GET' && (path === '/' || path === '/console')) {
+  if (method === 'GET' && (path === '/' || path === '/console' || path === '/watch')) {
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Robots-Tag': 'noindex',
@@ -87,6 +88,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     });
     return res.end(CONSOLE_HTML);
   }
+  if (method === 'GET' && path === '/watch/state') return send(res, await routes.watchState());
   if (path === '/healthz') return send(res, { status: 200, type: 'text/plain', body: 'ok' });
 
   const base: routes.Req = { method, path, pathAndQuery: req.url || '/', query: url.searchParams, headers: req.headers, form: {}, json: null };
