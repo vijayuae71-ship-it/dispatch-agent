@@ -42,6 +42,7 @@ const adminRoutes: Record<string, { method: string; fn: Handler }> = {
   '/api/deliveries': { method: 'POST', fn: routes.upsertDeliveries },
   '/api/alerts/resolve': { method: 'POST', fn: routes.resolve },
   '/api/alerts/assign': { method: 'POST', fn: routes.assign },
+  '/api/deliveries/assign': { method: 'POST', fn: routes.assignDelivery },
   '/api/tick': { method: 'POST', fn: routes.runTick },
   '/api/sync': { method: 'POST', fn: routes.sync },
   '/api/demo/start': { method: 'POST', fn: routes.demoStart },

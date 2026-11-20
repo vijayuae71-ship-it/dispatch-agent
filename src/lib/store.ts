@@ -133,6 +133,20 @@ async function nextAlertNumber(): Promise<number> {
   return c + 1;
 }
 
+/** Order numbers for bot-taken orders start at 101, short enough to type on a phone. */
+export async function nextDeliveryNumber(): Promise<number> {
+  const c = ((await backend.get('meta', 'deliveryCounter')) as { n: number } | null)?.n || 100;
+  await backend.set('meta', 'deliveryCounter', { n: c + 1 });
+  return c + 1;
+}
+
+/** Find a delivery by its short number ("101") or its ID / order number ("ORD-1041"). */
+export async function findDelivery(ref: string): Promise<Delivery | null> {
+  const r = ref.trim().replace(/^#/, '').toLowerCase();
+  const all = await listDeliveries(1000);
+  return all.find((d) => String(d.number ?? '') === r) || all.find((d) => d.id.toLowerCase() === r || d.orderNo.toLowerCase() === r) || null;
+}
+
 export async function addAlert(a: Omit<Alert, 'id' | 'at' | 'number'>): Promise<Alert> {
   const alert: Alert = { ...a, id: randomUUID(), number: await nextAlertNumber(), at: nowIso() };
   await backend.set('alerts', alert.id, clean(alert));

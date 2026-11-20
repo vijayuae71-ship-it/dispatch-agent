@@ -10,6 +10,7 @@
     --bg: #f3f4f1; --card: #ffffff; --ink: #1b211e; --muted: #5d6862; --line: #e2e5e0;
     --accent: #2f6b4f; --accent-ink: #fff; --soft: #eef3ef;
     --wa-bg: #efeae2; --wa-in: #ffffff; --wa-out: #d9fdd3; --wa-ink: #111b21;
+    --s-requested: #fde7c8; --s-requested-ink: #7a3f00;
     --s-scheduled: #e8eaf0; --s-scheduled-ink: #3b4256;
     --s-confirmed: #dcefff; --s-confirmed-ink: #0b4d80;
     --s-en_route: #dff5e6; --s-en_route-ink: #145a32;
@@ -26,6 +27,7 @@
       --bg: #121614; --card: #1a201d; --ink: #e6ebe8; --muted: #9aa6a0; --line: #2a322e;
       --accent: #6db38c; --accent-ink: #0c1510; --soft: #1f2a24;
       --wa-bg: #0b141a; --wa-in: #202c33; --wa-out: #005c4b; --wa-ink: #e9edef;
+      --s-requested: #4a3214; --s-requested-ink: #ffd49a;
       --s-scheduled: #2a2e38; --s-scheduled-ink: #c8cee0;
       --s-confirmed: #12324d; --s-confirmed-ink: #b9dcff;
       --s-en_route: #143522; --s-en_route-ink: #b6eac6;
@@ -80,6 +82,8 @@
   .dl .row span b { font-weight: 600; }
   .status { border-radius: 99px; padding: 2px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; align-self: start; }
   .late { color: var(--warn); font-weight: 700; }
+  .assign { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .assign input { flex: 1 1 110px; padding: 6px 8px; font-size: 13px; }
   .issue { color: var(--crit); font-weight: 600; }
   .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; }
   .alerts { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
@@ -154,6 +158,7 @@
     <div class="clock" id="clock" title="Dispatch clock"></div>
     <div class="spacer"></div>
     <div class="controls" id="demoControls">
+      <select id="scenario" aria-label="Demo scenario"></select>
       <button id="startDemo" class="primary">▶ Start demo day</button>
       <button data-adv="15">+15 min</button>
       <button data-adv="30">+30 min</button>
@@ -200,7 +205,7 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); Object.assign(n, props); for (const k of kids) if (k != null && k !== false) n.append(k); return n; };
   const store = { get() { try { return sessionStorage.getItem('dispatch_key') || ''; } catch { return ''; } }, set(v) { try { sessionStorage.setItem('dispatch_key', v); } catch {} } };
-  const STATUS_LABEL = { scheduled: 'Scheduled', confirmed: 'Confirmed', en_route: 'On the way', delayed: 'Delayed', arrived: 'Arrived', delivered: 'Delivered', rescheduled: 'Reschedule asked', issue: 'Issue', cancelled: 'Cancelled' };
+  const STATUS_LABEL = { requested: 'Needs truck', scheduled: 'Scheduled', confirmed: 'Confirmed', en_route: 'On the way', delayed: 'Delayed', arrived: 'Arrived', delivered: 'Delivered', rescheduled: 'Reschedule asked', issue: 'Issue', cancelled: 'Cancelled' };
   const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
 
   let key = store.get();
@@ -234,7 +239,7 @@
     const map = new Map();
     for (const d of S.deliveries) {
       if (!map.has(d.client.phone)) map.set(d.client.phone, { phone: d.client.phone, name: d.client.name, party: 'client', sub: `Client · ${d.site.name}` });
-      if (!map.has(d.driver.phone)) map.set(d.driver.phone, { phone: d.driver.phone, name: d.driver.name, party: 'driver', sub: `Driver · ${d.truck}` });
+      if (d.driver.phone && !map.has(d.driver.phone)) map.set(d.driver.phone, { phone: d.driver.phone, name: d.driver.name, party: 'driver', sub: `Driver · ${d.truck}` });
       for (const c of d.contacts || []) if (!map.has(c.phone)) map.set(c.phone, { phone: c.phone, name: c.name, party: 'client', sub: `${c.role || 'Contact'} · ${d.client.name}` });
     }
     for (const c of S.clerks || []) if (!map.has(c.phone)) map.set(c.phone, { phone: c.phone, name: c.name, party: 'dispatcher', sub: 'Dispatch clerk' });
@@ -251,6 +256,11 @@
     $('company').textContent = `${S.company} · AI dispatcher "${S.agentName}" · ${S.store} store`;
     $('clock').textContent = S.clock.time;
     $('demoControls').classList.toggle('hidden', S.mode !== 'demo');
+    const sc = $('scenario');
+    if (S.scenarios && sc.options.length !== S.scenarios.length) {
+      sc.replaceChildren(...S.scenarios.map((x) => el('option', { value: x.id, textContent: x.label })));
+      try { const saved = localStorage.getItem('dispatch_scenario'); if (saved) sc.value = saved; } catch {}
+    }
     $('syncSheet').classList.toggle('hidden', !S.sheet);
     renderGuide(); renderKpis(); renderDeliveries(); renderAlerts(); renderContacts(); renderPhone();
   }
@@ -260,18 +270,23 @@
     if (S.mode !== 'demo') { g.innerHTML = ''; g.append(el('span', { textContent: 'Live mode: messages and calls go to real phones through Twilio. Rules run every minute.' })); return; }
     g.replaceChildren();
     if (!S.deliveries.length) {
-      g.append(el('b', { textContent: 'Demo: ' }), 'press "Start demo day" to load a morning at a Pune building-materials transporter (5 trucks). Then move the clock and reply as clients and drivers on the right.');
+      g.append(el('b', { textContent: 'Demo: ' }), 'pick an industry and press "Start demo day" to load a morning with 5 trucks. Then move the clock and reply as customers, drivers and clerks on the right.');
       return;
     }
     const ringing = S.calls.find((c) => c.status === 'ringing');
     const unanswered = S.threads.find((t) => t.messages.length && t.messages[t.messages.length - 1].direction === 'out' && t.messages[t.messages.length - 1].channel === 'whatsapp');
+    const needsTruck = S.deliveries.find((d) => d.status === 'requested');
+    if (needsTruck && !S.calls.find((c) => c.status === 'ringing')) {
+      g.append(el('b', { textContent: 'New order: ' }), `#${needsTruck.number} needs a truck. Fill in the form on its card, or as a clerk on WhatsApp send "assign ${needsTruck.number} MH12AB1234 9876543210 Ramesh". The driver gets the trip and the customer gets the truck details.`);
+      return;
+    }
     const freshAlert = S.alerts.find((x) => !x.resolved && !x.assignedTo);
     if (freshAlert && (S.clerks || []).length && !ringing) {
       g.append(el('b', { textContent: 'Clerks: ' }), `alert #${freshAlert.number} went to all ${S.clerks.length} clerks on WhatsApp. Open 🎧 ${S.clerks[0].name}'s chat and reply "take ${freshAlert.number}" (the others are told), or press Take on the alert.`);
       return;
     }
     if (ringing) g.append(el('b', { textContent: 'Escalation call: ' }), `the bot is calling ${ringing.phone === selected ? 'this contact' : nameOf(ringing.phone)} because WhatsApp got no reply. Open their chat and press Answer to talk to it (type what you'd say).`);
-    else if (unanswered) g.append(el('b', { textContent: 'Try it: ' }), `the bot messaged ${nameOf(unanswered.phone)}. Open their chat and reply as them, in any language: e.g. "haan site ready hai", "traffic hai, 45 min lagega", "truck ka tyre puncture ho gaya". Or ignore it and add +30 min to see the bot call them.`);
+    else if (unanswered) g.append(el('b', { textContent: 'Try it: ' }), `the bot messaged ${nameOf(unanswered.phone)}. Open their chat and reply as them, in any language: e.g. "haan ready hai", "traffic hai, 45 min lagega", "truck ka tyre puncture ho gaya". Customers can also place orders: "send 2 trucks tomorrow 9 am". Or ignore it and add +30 min to see the bot call them.`);
     else g.append(el('b', { textContent: 'Next: ' }), 'move the clock forward. The bot asks clients to confirm 2 hours before delivery and checks on drivers when an ETA is due or missed.');
   }
   const nameOf = (phone) => contacts().find((c) => c.phone === phone)?.name || phone;
@@ -291,6 +306,9 @@
 
   function renderDeliveries() {
     $('dCount').textContent = S.deliveries.length;
+    // Don't redraw while a clerk is typing into an assign form.
+    const typingIn = [...document.querySelectorAll('.assign input')].some((i) => i.value || i === document.activeElement);
+    if (typingIn) return;
     if (!S.deliveries.length) return $('deliveries').replaceChildren(el('div', { className: 'empty', textContent: S.mode === 'demo' ? 'No deliveries yet. Press "Start demo day".' : 'No deliveries yet. Add rows to the Google Sheet or POST /api/deliveries.' }));
     $('deliveries').replaceChildren(...S.deliveries.map((d) => {
       const lateMin = d.eta ? Math.round((Date.parse(d.eta) - Date.parse(d.plannedAt)) / 60000) : 0;
@@ -299,7 +317,7 @@
         el('span', { className: 'status', textContent: STATUS_LABEL[d.status] || d.status, style: `background:var(--s-${d.status});color:var(--s-${d.status}-ink)` }),
         el('div', { className: 'row' },
           el('span', {}, '🏗 ', el('b', { textContent: d.client.name }), ` · ${d.site.name}`),
-          el('span', {}, '🚚 ', el('b', { textContent: d.truck }), ` · ${d.driver.name}`)),
+          d.truck ? el('span', {}, '🚚 ', el('b', { textContent: d.truck }), ` · ${d.driver.name}`) : el('span', { className: 'late', textContent: '🚚 No truck yet' })),
         el('div', { className: 'row' },
           el('span', { textContent: `Planned ${fmt(d.plannedAt)}` }),
           d.eta && d.eta !== d.plannedAt ? el('span', { className: lateMin >= 20 ? 'late' : '', textContent: `ETA ${fmt(d.eta)}${lateMin > 0 ? ` (+${lateMin} min)` : ''}` }) : null,
@@ -308,13 +326,34 @@
           (d.contacts || []).length ? el('span', { textContent: `👥 ${d.contacts.map((c) => c.role ? `${c.name} (${c.role})` : c.name).join(', ')}` }) : null,
           d.rescheduledTo ? el('span', { className: 'late', textContent: `Asked for ${fmt(d.rescheduledTo)}` }) : null),
         d.issue ? el('div', { className: 'row issue', textContent: `⚠ ${d.issue}` }) : null,
+        d.status === 'requested' ? assignForm(d) : null,
         el('div', { className: 'row' },
           chatLink(d.client.phone, `Chat with client`),
-          chatLink(d.driver.phone, `Chat with driver`)));
+          d.driver.phone ? chatLink(d.driver.phone, `Chat with driver`) : null));
       if (prevStatus.has(d.id) && prevStatus.get(d.id) !== d.status) card.classList.add('flash');
       prevStatus.set(d.id, d.status);
       return card;
     }));
+  }
+  function assignForm(d) {
+    const truck = el('input', { placeholder: 'Truck no.', autocomplete: 'off' });
+    const phone = el('input', { placeholder: 'Driver phone', inputMode: 'tel', autocomplete: 'off' });
+    const name = el('input', { placeholder: 'Driver name', autocomplete: 'off' });
+    const go = el('button', { className: 'primary', textContent: 'Assign', type: 'submit' });
+    const f = el('form', { className: 'assign' }, truck, phone, name, go);
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!truck.value.trim() || !phone.value.trim()) return alert('Truck number and driver phone are needed.');
+      go.disabled = true;
+      try {
+        await api('/api/deliveries/assign', { ref: d.id, truck: truck.value.trim(), driverPhone: phone.value.trim(), driverName: name.value.trim(), clerk: me.get() || 'Dispatcher' });
+        truck.value = phone.value = name.value = '';
+        if (document.activeElement) document.activeElement.blur();
+      }
+      catch (err) { alert(err.message); }
+      finally { go.disabled = false; refresh(); }
+    });
+    return f;
   }
   function chatLink(phone, label) {
     const b = el('button', { className: 'link', textContent: label, type: 'button' });
@@ -461,7 +500,12 @@
     catch (e) { alert(e.message); }
     finally { busy = false; document.querySelectorAll('header button').forEach((b) => (b.disabled = false)); if (btn) btn.textContent = btn.dataset.label; refresh(); }
   }
-  $('startDemo').addEventListener('click', (e) => { selected = ''; control('/api/demo/start', {}, e.target); });
+  $('startDemo').addEventListener('click', (e) => {
+    selected = '';
+    const scenario = $('scenario').value || 'construction';
+    try { localStorage.setItem('dispatch_scenario', scenario); } catch {}
+    control('/api/demo/start', { scenario }, e.target);
+  });
   document.querySelectorAll('[data-adv]').forEach((b) => b.addEventListener('click', () => control('/api/demo/advance', { minutes: Number(b.dataset.adv) }, b)));
   $('runRules').addEventListener('click', (e) => control('/api/tick', {}, e.target));
   $('syncSheet').addEventListener('click', (e) => control('/api/sync', {}, e.target));

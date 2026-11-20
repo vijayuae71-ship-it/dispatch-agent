@@ -123,3 +123,21 @@ test('sheet "Other Contacts" cell becomes contacts with roles', async () => {
   assert.deepEqual(parseContacts('', toPhone), []);
   assert.deepEqual(parseContacts('just a name', toPhone), []);
 });
+
+test('assign command parsing', async () => {
+  const { parseAssign } = await import('../src/lib/assign');
+  assert.deepEqual(parseAssign('assign 101 mh12ab1234 98765 43210 Ramesh Yadav'), { ref: '101', truck: 'MH12AB1234', driverPhone: '9876543210', driverName: 'Ramesh Yadav' });
+  assert.deepEqual(parseAssign('a #102 23758FUJ +971526063475'), { ref: '102', truck: '23758FUJ', driverPhone: '+971526063475', driverName: undefined });
+  assert.equal(parseAssign('take 12'), null);
+  assert.equal(parseAssign('assign 101 MH12'), null);
+});
+
+test('phone numbers are normalised with the company country code', async () => {
+  const { normalizePhone, config } = await import('../src/lib/config');
+  assert.equal(normalizePhone('98765 43210'), '+919876543210');
+  assert.equal(normalizePhone('+971 52 606 3475'), '+971526063475');
+  assert.equal(normalizePhone('00971526063475'), '+971526063475');
+  config().defaultCountryCode = '+971';
+  assert.equal(normalizePhone('0526063475'), '+971526063475');
+  config().defaultCountryCode = '+91';
+});

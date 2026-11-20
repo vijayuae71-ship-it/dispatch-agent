@@ -56,6 +56,14 @@ function textReply(text: string) {
       updates: [upd(id, { status: 'confirmed', confirmed: true, siteContact: line.includes('sunil') ? 'Sunil 9876543210' : null })],
       alert: null,
     };
+  if (line.includes('send 2 trip'))
+    return {
+      reply: '',
+      language: 'hi-IN',
+      updates: [],
+      alert: null,
+      newOrders: [{ what: 'OPC cement', trips: 2, location: 'Wakad Residency', requestedAt: new Date(Math.floor(Date.now() / 3600000) * 3600000 + 8 * 3600000).toISOString() }],
+    };
   if (line.includes('number')) {
     // Share the driver's number only if the dispatcher's data includes it.
     const phone = text.match(/Driver: [^\n(]+\(phone (\+\d+)\)/)?.[1];

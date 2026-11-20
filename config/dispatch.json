@@ -2,6 +2,8 @@
   "company": "Demo Logistics",
   "agentName": "Asha",
   "timezone": "Asia/Kolkata",
+  "defaultCountryCode": "+91",
+  "businessDescription": "",
   "defaultLanguage": "hi-IN",
   "dispatchers": [],
   "rules": {

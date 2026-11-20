@@ -1,6 +1,6 @@
 import { parseLocal, fmtDateTime } from './clock';
 import { getDelivery, listDeliveries, saveDelivery } from './store';
-import { config } from './config';
+import { config, normalizePhone } from './config';
 import type { Contact, Delivery, DeliveryStatus } from './types';
 
 // Google Sheets as the order feed: one row per delivery. The dispatcher (or
@@ -80,10 +80,7 @@ export function rowsToDeliveries(rows: string[][]): { header: Record<string, num
   const missing = SHEET_COLUMNS.required.filter((c) => header[norm(c)] === undefined);
   if (missing.length) return { header, items: [], errors: [`Missing columns: ${missing.join(', ')}`] };
   const get = (r: string[], c: string) => (header[norm(c)] !== undefined ? String(r[header[norm(c)]] ?? '').trim() : '');
-  const phone = (s: string) => {
-    const p = s.replace(/[\s()-]/g, '');
-    return /^\d{10}$/.test(p) ? `+91${p}` : p.startsWith('+') ? p : p ? `+${p}` : '';
-  };
+  const phone = (s: string) => normalizePhone(s);
   const items: { row: number; d: Partial<Delivery> & { id: string }; sheetStatus?: string }[] = [];
   rows.slice(1).forEach((r, i) => {
     const order = get(r, 'Order');

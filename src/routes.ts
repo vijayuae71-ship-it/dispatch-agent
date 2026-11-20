@@ -3,8 +3,9 @@ import { config } from './lib/config';
 import { advanceClock, fmtTime, fmtDateTime, now } from './lib/clock';
 import { demoCallTurn, endCall, handleInbound, tick } from './lib/engine';
 import { assignAlert, closeAlert } from './lib/clerks';
+import { assignTruck } from './lib/assign';
 import { isDemo } from './lib/outbox';
-import { startDemoDay } from './lib/demo';
+import { SCENARIOS, startDemoDay, type Scenario } from './lib/demo';
 import { sheetConfigured, syncSheet } from './lib/sheets';
 import {
   addAlert,
@@ -115,6 +116,7 @@ export async function state(): Promise<Res> {
     agentName: config().agentName,
     languages: config().languages.map((l) => ({ code: l.code, name: l.name })),
     clerks: config().dispatchers,
+    scenarios: Object.entries(SCENARIOS).map(([id, s]) => ({ id, label: s.label })),
     sheet: sheetConfigured(),
     clock: { now: now().toISOString(), time: fmtTime(now().toISOString()), label: fmtDateTime(now().toISOString()) },
     deliveries: deliveries.sort((a, b) => a.plannedAt.localeCompare(b.plannedAt)),
@@ -173,6 +175,14 @@ export async function resolve(req: Req): Promise<Res> {
   return json(r.ok ? 200 : 409, r);
 }
 
+/** { ref, truck, driverPhone, driverName?, clerk? }: put a truck and driver on an order. */
+export async function assignDelivery(req: Req): Promise<Res> {
+  const b = req.json || {};
+  if (!b.ref || !b.truck || !b.driverPhone) return json(400, { error: 'ref, truck and driverPhone are required' });
+  const r = await assignTruck({ ref: String(b.ref), truck: String(b.truck), driverPhone: String(b.driverPhone), driverName: b.driverName ? String(b.driverName) : undefined, by: String(b.clerk || 'Dispatcher') });
+  return json(r.ok ? 200 : 409, r);
+}
+
 /** { id, clerk }: a clerk takes an alert from the console. */
 export async function assign(req: Req): Promise<Res> {
   const id = String(req.json?.id || '');
@@ -201,11 +211,13 @@ function demoOnly(): Res | null {
   return isDemo() ? null : json(403, { error: 'Demo controls are off in live mode (MODE=live).' });
 }
 
-export async function demoStart(): Promise<Res> {
+export async function demoStart(req: Req): Promise<Res> {
   const denied = demoOnly();
   if (denied) return denied;
   if (storeKind() !== 'memory') return json(400, { error: 'Demo mode needs STORE=memory, so it never touches real data.' });
-  await startDemoDay();
+  const scenario = String(req.json?.scenario || 'construction');
+  if (!(scenario in SCENARIOS)) return json(400, { error: `Unknown scenario. Options: ${Object.keys(SCENARIOS).join(', ')}` });
+  await startDemoDay(scenario as Scenario);
   await tick();
   return state();
 }

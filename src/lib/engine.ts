@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { config } from './config';
 import { minutesBetween, now, nowIso } from './clock';
 import { decide, type Action } from './rules';
-import { replyToMessage, runVoiceTurn, type VoiceTurn } from './agent';
+import { replyToMessage, runVoiceTurn, type NewOrder, type VoiceTurn } from './agent';
 import { isDemo, ring, sendTemplate, sendText } from './outbox';
 import { statusPhrase, templateVars } from './templates';
 import { handleClerkMessage, notifyClerks } from './clerks';
@@ -12,13 +12,15 @@ import {
   appendMessage,
   getCall,
   getDelivery,
+  nextDeliveryNumber,
   getThread,
   listDeliveries,
   saveCall,
   saveDelivery,
   setThreadLanguage,
 } from './store';
-import { CLOSED, type AgentAlert, type CallSession, type Delivery, type DeliveryUpdate, type Party } from './types';
+import { CLOSED, type AgentAlert, type CallSession, type Contact, type Delivery, type DeliveryUpdate, type Party } from './types';
+import { fmtDateTime } from './clock';
 
 // The dispatcher's brain: reacts to incoming WhatsApp messages and calls,
 // runs the time-based rules, and keeps every delivery's status current.
@@ -40,9 +42,26 @@ function isActive(d: Delivery): boolean {
   return mins > -24 * 60 && mins < 48 * 60;
 }
 
-/** Who is this number, and which of their deliveries are live? */
-export async function identify(phone: string): Promise<{ party: Party | 'unknown'; name?: string; language?: string; deliveries: Delivery[] }> {
-  const all = (await listDeliveries()).filter(isActive);
+export interface Customer {
+  client: Contact;
+  contacts: Contact[];
+  /** Usual delivery locations, newest first. */
+  locations: { name: string; area?: string }[];
+}
+
+/** Who is this number, and which of their deliveries are live? Customers are also recognised from past orders. */
+export async function identify(phone: string): Promise<{ party: Party | 'unknown'; name?: string; language?: string; deliveries: Delivery[]; customer?: Customer }> {
+  const history = await listDeliveries(1000);
+  const isCustomer = (d: Delivery) => samePhone(d.client.phone, phone) || (d.contacts || []).some((c) => samePhone(c.phone, phone));
+  const mine = history.filter(isCustomer).sort((a, b) => b.plannedAt.localeCompare(a.plannedAt));
+  const customer: Customer | undefined = mine.length
+    ? {
+        client: mine[0].client,
+        contacts: mine[0].contacts || [],
+        locations: mine.map((d) => ({ name: d.site.name, area: d.site.area })).filter((l, i, a) => a.findIndex((x) => x.name.toLowerCase() === l.name.toLowerCase()) === i).slice(0, 10),
+      }
+    : undefined;
+  const all = history.filter(isActive);
   const asDriver = all.filter((d) => samePhone(d.driver.phone, phone));
   if (asDriver.length) return { party: 'driver', name: asDriver[0].driver.name, language: asDriver[0].driver.language, deliveries: asDriver };
   const asClient = all.filter((d) => samePhone(d.client.phone, phone) || (d.contacts || []).some((c) => samePhone(c.phone, phone)));
@@ -50,10 +69,16 @@ export async function identify(phone: string): Promise<{ party: Party | 'unknown
     const d = asClient[0];
     const c = samePhone(d.client.phone, phone) ? d.client : (d.contacts || []).find((x) => samePhone(x.phone, phone))!;
     const name = c === d.client ? c.name : `${c.name}${c.role ? ` (${c.role})` : ''}, ${d.client.name}`;
-    return { party: 'client', name, language: c.language, deliveries: asClient };
+    return { party: 'client', name, language: c.language, deliveries: asClient, customer };
   }
   const disp = config().dispatchers.find((x) => samePhone(x.phone, phone));
   if (disp) return { party: 'dispatcher', name: disp.name, deliveries: [] };
+  // A known customer with nothing active right now (e.g. about to place an order).
+  if (customer) {
+    const c = samePhone(customer.client.phone, phone) ? customer.client : customer.contacts.find((x) => samePhone(x.phone, phone))!;
+    const name = c === customer.client ? c.name : `${c.name}${c.role ? ` (${c.role})` : ''}, ${customer.client.name}`;
+    return { party: 'client', name, language: c.language, deliveries: [], customer };
+  }
   return { party: 'unknown', deliveries: [] };
 }
 
@@ -78,9 +103,9 @@ async function isDuplicate(a: AgentAlert): Promise<boolean> {
   );
 }
 
-export async function raiseAlert(a: AgentAlert, opts: { dedupe?: boolean } = {}) {
+export async function raiseAlert(a: AgentAlert, opts: { dedupe?: boolean; kind?: 'needs_truck' } = {}) {
   if (opts.dedupe && (await isDuplicate(a))) return null;
-  const alert = await addAlert({ deliveryId: a.deliveryId || undefined, severity: a.severity, text: a.text });
+  const alert = await addAlert({ deliveryId: a.deliveryId || undefined, severity: a.severity, text: a.text, ...(opts.kind ? { kind: opts.kind } : {}) });
   // Every alert goes to every clerk on WhatsApp; one of them takes it.
   await notifyClerks(alert);
   return alert;
@@ -173,14 +198,26 @@ export async function handleInbound(phone: string, text: string, opts: { hasMedi
   }
 
   const thread = await getThread(phone);
-  const r = await replyToMessage({ party: who.party, name: who.name, deliveries: who.deliveries, history: thread?.messages || [] });
+  const r = await replyToMessage({
+    party: who.party,
+    name: who.name,
+    deliveries: who.deliveries,
+    history: thread?.messages || [],
+    knownLocations: who.customer?.locations.map((l) => (l.area ? `${l.name} (${l.area})` : l.name)),
+  });
   if (r.language) await setThreadLanguage(phone, r.language);
   const changes = await applyUpdates(r.updates, who.party);
   if (r.alert) await raiseAlert(r.alert, { dedupe: true });
-  if (r.reply) {
-    await sendText(phone, r.reply, { party: who.party === 'unknown' ? 'client' : who.party, name: who.name, deliveryIds: who.deliveries.map((d) => d.id) });
+  let reply = r.reply;
+  if (r.newOrders.length && who.customer) {
+    const created = await createOrders(phone, who.customer, r.newOrders);
+    if (created.length) reply = [reply, orderConfirmation(created, r.language || who.language)].filter(Boolean).join('\n');
+    else if (!reply) reply = (r.language || '').startsWith('hi') ? '✅ Yeh order pehle se note hai. Truck details jaldi bhejenge.' : "✅ That order is already noted. We'll share truck details soon.";
   }
-  return { reply: r.reply, party: who.party, changes };
+  if (reply) {
+    await sendText(phone, reply, { party: who.party === 'unknown' ? 'client' : who.party, name: who.name, deliveryIds: who.deliveries.map((d) => d.id) });
+  }
+  return { reply, party: who.party, changes };
 }
 
 // ------------------------------------------------------------------- rules
@@ -307,4 +344,66 @@ export async function endCall(callId: string, status: CallSession['status'] = 'c
   if (status === 'failed' || call.transcript.length === 0) {
     await appendMessage(call.phone, { party: call.party, direction: 'out', channel: 'system', text: '📞 Call not answered', deliveryIds: call.deliveryIds });
   }
+}
+
+// ------------------------------------------------------------------ orders
+
+/** Turn orders the AI recognised into deliveries waiting for a truck (one per trip). */
+export async function createOrders(phone: string, customer: Customer, orders: NewOrder[]): Promise<Delivery[]> {
+  const existing = await listDeliveries(1000);
+  const created: Delivery[] = [];
+  for (const o of orders) {
+    const at = new Date(o.requestedAt).toISOString();
+    // The same order said twice ("send 2 trips… pls confirm, 2 trips…") shouldn't double up.
+    const dupes = existing.filter(
+      (d) =>
+        d.status === 'requested' &&
+        samePhone(d.requestedBy, phone) &&
+        d.site.name.toLowerCase() === o.location.toLowerCase() &&
+        Math.abs(minutesBetween(d.plannedAt, at)) <= 10,
+    ).length;
+    const known = customer.locations.find((l) => l.name.toLowerCase() === o.location.toLowerCase());
+    for (let t = dupes; t < o.trips; t++) {
+      const n = await nextDeliveryNumber();
+      const d: Delivery = {
+        id: `O-${n}`,
+        number: n,
+        orderNo: String(n),
+        material: o.trips > 1 ? `${o.what} (trip ${t + 1} of ${o.trips})` : o.what,
+        client: customer.client,
+        contacts: customer.contacts,
+        site: { name: known?.name || o.location, area: known?.area },
+        truck: '',
+        driver: { name: '', phone: '' },
+        plannedAt: at,
+        status: 'requested',
+        requestedBy: phone,
+        flags: {},
+        source: 'whatsapp',
+        updatedAt: '',
+      };
+      await saveDelivery(d);
+      created.push(d);
+      await raiseAlert(
+        {
+          deliveryId: d.id,
+          severity: 'info',
+          text: `New order #${n} from ${customer.client.name}: ${d.material} to ${d.site.name}, needed ${fmtDateTime(at)}. Assign with "assign ${n} <truck> <driver phone> <driver name>".`,
+        },
+        { kind: 'needs_truck' },
+      );
+    }
+  }
+  return created;
+}
+
+export function orderConfirmation(created: Delivery[], language?: string | null): string {
+  const hi = (language || '').startsWith('hi');
+  const nums = created.map((d) => `#${d.number}`).join(', ');
+  const first = created[0];
+  const what = first.material.replace(/ \(trip \d+ of \d+\)$/, '');
+  const trips = created.length;
+  return hi
+    ? `✅ Order note kar liya: ${what}, ${trips} trip, ${first.site.name}, ${fmtDateTime(first.plannedAt)}. Order no. ${nums}. Truck aur driver ki details jaldi bhejenge.`
+    : `✅ Order noted: ${trips} trip${trips > 1 ? 's' : ''} of ${what} to ${first.site.name}, ${fmtDateTime(first.plannedAt)}. Order no. ${nums}. We'll share truck and driver details soon.`;
 }

@@ -17,9 +17,13 @@ export interface VoiceLanguage {
 
 export interface DispatchConfig {
   company: string;
+  /** One line the AI uses for vocabulary, e.g. "bulk cement by bulker to plants and sites" or "FMCG cartons to retail stores". */
+  businessDescription?: string;
   /** Name the assistant uses, e.g. "Asha from Sharma Logistics dispatch". */
   agentName: string;
   timezone: string;
+  /** Added to 10-digit local numbers, e.g. "+91" (India) or "+971" (UAE). */
+  defaultCountryCode: string;
   /** Default language for outgoing messages when a contact has none set. */
   defaultLanguage: string;
   /** WhatsApp numbers (E.164) that receive alerts. */
@@ -47,6 +51,7 @@ const DEFAULTS: DispatchConfig = {
   company: 'Demo Logistics',
   agentName: 'Asha',
   timezone: 'Asia/Kolkata',
+  defaultCountryCode: '+91',
   defaultLanguage: 'en-IN',
   dispatchers: [],
   rules: {
@@ -75,6 +80,7 @@ export function loadConfig(path = process.env.CONFIG_FILE || 'config/dispatch.js
   cfg.rules.clientConfirmLeadMin = num('CLIENT_CONFIRM_LEAD_MIN') ?? cfg.rules.clientConfirmLeadMin;
   cfg.rules.noReplyMin = num('NO_REPLY_MIN') ?? cfg.rules.noReplyMin;
   if (process.env.COMPANY_NAME) cfg.company = process.env.COMPANY_NAME;
+  if (process.env.BUSINESS_DESCRIPTION) cfg.businessDescription = process.env.BUSINESS_DESCRIPTION;
   if (process.env.DISPATCHER_NUMBERS) {
     // "Anita:+919800000001, Farhan:+919800000002" (names optional)
     cfg.dispatchers = process.env.DISPATCHER_NUMBERS.split(/[,;]/)
@@ -89,6 +95,18 @@ export function loadConfig(path = process.env.CONFIG_FILE || 'config/dispatch.js
   if (process.env.SHARE_DRIVER_PHONE) cfg.shareDriverPhone = process.env.SHARE_DRIVER_PHONE === 'true';
   cached = cfg;
   return cfg;
+}
+
+/** "98765 43210" → "+919876543210"; "0501234567" → "+971501234567" with defaultCountryCode +971. */
+export function normalizePhone(raw: string): string {
+  const p = raw.replace(/[\s()-]/g, '');
+  if (!p) return '';
+  if (p.startsWith('+')) return p;
+  if (p.startsWith('00')) return '+' + p.slice(2);
+  const local = p.replace(/^0/, '');
+  const cc = config().defaultCountryCode;
+  if (local.length >= 8 && local.length <= 10) return cc + local;
+  return '+' + p;
 }
 
 export function config(): DispatchConfig {

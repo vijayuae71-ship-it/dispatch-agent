@@ -26,7 +26,7 @@ const STATUSES = ['scheduled', 'confirmed', 'en_route', 'delayed', 'arrived', 'd
 function deliveryBrief(d: Delivery, party: Party | 'unknown'): string {
   const lines = [
     `- Delivery ${d.id}: order ${d.orderNo}, ${d.material}`,
-    `  Site: ${d.site.name}${d.site.area ? `, ${d.site.area}` : ''}${d.site.contact ? ` (site contact: ${d.site.contact})` : ''}`,
+    `  Deliver to: ${d.site.name}${d.site.area ? `, ${d.site.area}` : ''}${d.site.contact ? ` (contact at the location: ${d.site.contact})` : ''}`,
     `  Planned arrival: ${fmtDateTime(d.plannedAt)}; current ETA: ${d.eta ? fmtDateTime(d.eta) : 'same as planned'}`,
     `  Truck ${d.truck}; status: ${d.status}${d.lastLocation ? `; last known location: ${d.lastLocation}` : ''}`,
   ];
@@ -48,19 +48,31 @@ function languagesList(): string {
 
 function roleGuide(party: Party | 'unknown'): string {
   if (party === 'driver')
-    return `You are talking to a truck DRIVER. Drivers may be on the road: keep every message very short and simple. Find out where they are (a landmark, road or area is enough), their ETA to the site, and any problem (breakdown, puncture, traffic jam, police check, loading delay, site refusing entry, accident). Never ask them to type long answers. If they mention an accident, injury or breakdown, tell them dispatch will call them, and raise a critical alert. Remind them not to text while driving if they seem to be driving.`;
+    return `You are talking to a truck DRIVER. Drivers may be on the road: keep every message very short and simple. Find out where they are (a landmark, road or area is enough), their ETA to the delivery location, and any problem (breakdown, puncture, traffic jam, police check, loading delay, entry refused at the location, accident). Never ask them to type long answers. If they mention an accident, injury or breakdown, tell them dispatch will call them, and raise a critical alert. Remind them not to text while driving if they seem to be driving.`;
   if (party === 'client')
-    return `You are talking to a CLIENT (or their site staff) receiving a delivery. Help them with: confirming the site is ready to unload, the site/gate contact person and number, rescheduling, and "where is my truck?" questions (answer only from the delivery data: ETA, truck number, driver name, status${config().shareDriverPhone ? ", and the driver's phone number if they ask for it" : ''}). ${config().shareDriverPhone ? "If they ask for the driver's number, just give it; no alert is needed." : "You can't share the driver's phone number; offer to pass a message to the driver, and raise an info alert only if they insist on talking to him."} Never promise anything not in the data; for complaints, pricing, quality or billing say the dispatcher will call them and raise an alert.`;
+    return `You are talking to a CUSTOMER (or their staff at the delivery location: site, warehouse, store, plant…) receiving a delivery. Help them with: confirming they're ready to receive it, the contact person at the location, rescheduling, new orders, and "where is my truck?" questions (answer only from the delivery data: ETA, truck number, driver name, status${config().shareDriverPhone ? ", and the driver's phone number if they ask for it" : ''}). ${config().shareDriverPhone ? "If they ask for the driver's number, just give it; no alert is needed." : "You can't share the driver's phone number; offer to pass a message to the driver, and raise an info alert only if they insist on talking to him."} Never promise anything not in the data; for complaints, pricing, quality or billing say the dispatcher will call them and raise an alert.`;
   return `You don't know who this is. Politely say this number is for delivery updates and ask for their order number; raise an info alert so a dispatcher can follow up.`;
 }
 
 // --------------------------------------------------------------- WhatsApp
+
+export interface NewOrder {
+  /** What to deliver, in the customer's words, e.g. "OPC cement", "300 cartons biscuits". */
+  what: string;
+  /** Number of truck trips (1 if not said). */
+  trips: number;
+  /** Where to deliver. */
+  location: string;
+  /** When it's needed, ISO 8601 with offset. */
+  requestedAt: string;
+}
 
 export interface TextReply {
   reply: string;
   language: string | null;
   updates: DeliveryUpdate[];
   alert: AgentAlert | null;
+  newOrders: NewOrder[];
 }
 
 const UPDATE_SCHEMA = {
@@ -70,20 +82,35 @@ const UPDATE_SCHEMA = {
   properties: {
     deliveryId: { type: 'string' },
     status: { anyOf: [{ type: 'string', enum: STATUSES }, { type: 'null' }] },
-    etaMinutes: { type: ['integer', 'null'], description: 'Minutes from now until the truck reaches the site, if stated or clearly implied.' },
+    etaMinutes: { type: ['integer', 'null'], description: 'Minutes from now until the truck reaches the delivery location, if stated or clearly implied.' },
     location: { type: ['string', 'null'], description: 'Where the truck is now, as the driver described it.' },
     issue: { type: ['string', 'null'], description: 'A problem needing a human, in English, one line.' },
-    siteContact: { type: ['string', 'null'], description: 'Site / gate contact name and number given by the client.' },
+    siteContact: { type: ['string', 'null'], description: 'Contact person (name and number) at the delivery location, given by the customer.' },
     rescheduleTo: { type: ['string', 'null'], description: 'New requested delivery time as ISO 8601 with offset.' },
-    confirmed: { type: ['boolean', 'null'], description: 'True if the client confirmed the site is ready to receive.' },
+    confirmed: { type: ['boolean', 'null'], description: 'True if the customer confirmed they are ready to receive the delivery.' },
   },
 } as const;
 
 const REPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['reply', 'language', 'updates', 'alert'],
+  required: ['reply', 'language', 'updates', 'alert', 'newOrders'],
   properties: {
+    newOrders: {
+      type: 'array',
+      description: 'New orders placed in the latest message only. Empty if none.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['what', 'trips', 'location', 'requestedAt'],
+        properties: {
+          what: { type: 'string', description: 'What to deliver, in their words, e.g. "OPC cement" or "300 cartons biscuits".' },
+          trips: { type: 'integer', description: 'Number of truck trips; 1 if not said.' },
+          location: { type: 'string', description: 'Delivery location, matching a known location name when it is one.' },
+          requestedAt: { type: 'string', description: 'When it is needed, ISO 8601 with offset.' },
+        },
+      },
+    },
     reply: { type: 'string', description: 'The WhatsApp reply to send. Empty string if no reply is needed.' },
     language: { type: ['string', 'null'], description: 'Language code the person is writing in, from the list.' },
     updates: { type: 'array', items: UPDATE_SCHEMA },
@@ -107,7 +134,7 @@ const REPLY_SCHEMA = {
 
 function textSystemPrompt(): string {
   const c = config();
-  return `You are ${c.agentName}, the AI dispatch assistant of ${c.company}, an Indian logistics company. You handle WhatsApp messages with clients and truck drivers about deliveries. You are helpful, warm and brief, like a good human dispatcher.
+  return `You are ${c.agentName}, the AI dispatch assistant of ${c.company}, a logistics company${c.businessDescription ? ` (${c.businessDescription})` : ''}. You handle WhatsApp messages with customers and truck drivers about deliveries. Use the words this business and its customers use for their goods and locations. You are helpful, warm and brief, like a good human dispatcher.
 
 How to write:
 - WhatsApp style: short, friendly, plain. 1-3 short sentences. No markdown headings or bullet lists. At most one emoji, usually none.
@@ -120,11 +147,12 @@ Languages you can use:
 ${languagesList()}
 
 Record what you learn in "updates", one entry per affected delivery, with null for anything not mentioned:
-- Driver gives location and/or ETA → location, etaMinutes; status "en_route" (or "delayed" if clearly late), "arrived" if they're at the site, "delivered" if unloaded.
-- Client confirms site is ready → confirmed true, status "confirmed". Gives a site contact → siteContact.
+- Driver gives location and/or ETA → location, etaMinutes; status "en_route" (or "delayed" if clearly late), "arrived" if they're at the delivery location, "delivered" if unloaded / handed over.
+- Customer confirms they're ready to receive → confirmed true, status "confirmed". Gives a contact person at the location → siteContact.
 - Client wants a different time → rescheduleTo, status "rescheduled", and an info alert.
-- Any problem a human must handle (breakdown, accident, site refused, wrong material, complaint, cancellation request) → issue, status "issue", and an alert ("critical" for breakdown/accident/site refused, "warning" otherwise).
+- Any problem a human must handle (breakdown, accident, delivery refused, wrong or damaged goods, complaint, cancellation request) → issue, status "issue", and an alert ("critical" for breakdown/accident/delivery refused, "warning" otherwise).
 - Use only delivery IDs from the data. If the message doesn't change anything, return an empty updates list.
+- New orders: customers may order on WhatsApp ("Send 2 trip OPC to Jebel Ali plant 3 PM", "need 300 cartons at Andheri store tomorrow 10 am"). Add one entry to newOrders only when the latest message places a new order and you know what, where and when (resolve "3 PM", "tomorrow morning" against the current time; "now/ASAP" means one hour from now). If something is missing, ask for it briefly instead and add nothing. When you add a new order, set reply to "" because the system sends a numbered confirmation. Never re-add an order from earlier in the conversation. Unknown numbers can't order: ask who they are.
 - Raise an alert only when a human must act. Don't raise one for something you handled yourself, or repeat one you already raised in this conversation for the same problem.`;
 }
 
@@ -137,8 +165,10 @@ export async function replyToMessage(input: {
   name?: string;
   deliveries: Delivery[];
   history: Message[];
+  /** For customers: their usual delivery locations, so new orders use consistent names. */
+  knownLocations?: string[];
 }): Promise<TextReply> {
-  const { party, name, deliveries, history } = input;
+  const { party, name, deliveries, history, knownLocations } = input;
   const convo = history
     .slice(-16)
     .map((m) => `[${fmtTime(m.at)}] ${m.direction === 'in' ? name || 'Them' : 'You'}${m.channel === 'call' ? ' (on a call)' : ''}: ${m.text}`)
@@ -149,7 +179,7 @@ ${roleGuide(party)}
 
 Person: ${name || 'unknown'} (${party})
 Their deliveries:
-${deliveries.length ? deliveries.map((d) => deliveryBrief(d, party)).join('\n') : '(none found for this number)'}
+${deliveries.length ? deliveries.map((d) => deliveryBrief(d, party)).join('\n') : '(no active deliveries)'}${knownLocations?.length ? `\nTheir usual delivery locations: ${knownLocations.join('; ')}` : ''}
 
 Conversation so far (latest last):
 ${convo}
@@ -161,6 +191,7 @@ Write your reply to their latest message.`;
     language: null,
     updates: [],
     alert: { deliveryId: deliveries[0]?.id || null, severity: 'warning', text: `AI couldn't handle a message from ${name || 'unknown'} (${party}); please read the thread.` },
+    newOrders: [],
   };
 
   try {
@@ -182,6 +213,12 @@ Write your reply to their latest message.`;
       reply: String(p.reply || '').trim(),
       language: p.language && findLanguage(p.language) ? findLanguage(p.language)!.code : null,
       updates: (p.updates || []).filter((u) => ids.has(u.deliveryId)),
+      newOrders:
+        party === 'client'
+          ? (p.newOrders || [])
+              .filter((o) => o && o.what && o.location && !isNaN(Date.parse(o.requestedAt)))
+              .map((o) => ({ ...o, trips: Math.max(1, Math.min(20, Math.round(Number(o.trips) || 1))) }))
+          : [],
       alert: p.alert && p.alert.text ? { ...p.alert, deliveryId: p.alert.deliveryId && ids.has(p.alert.deliveryId) ? p.alert.deliveryId : deliveries[0]?.id || null } : null,
     };
   } catch (err) {

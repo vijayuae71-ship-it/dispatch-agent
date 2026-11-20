@@ -1,8 +1,10 @@
 # Dispatch Agent
 
-An AI dispatcher for Indian logistics. It takes over the routine calls that dispatch desks make all day: confirming deliveries with clients, chasing drivers for location and ETA, and answering "where's my truck?". It does this over **WhatsApp first**, calls only when someone doesn't reply, and alerts a human dispatcher only when one is needed.
+An AI dispatcher for any logistics operation: building materials, FMCG distribution, cold chain, e-commerce, bulk goods. India first. It takes over the routine calls that dispatch desks make all day: confirming deliveries with clients, chasing drivers for location and ETA, and answering "where's my truck?". It does this over **WhatsApp first**, calls only when someone doesn't reply, and alerts a human dispatcher only when one is needed.
 
-- **Clients** get a WhatsApp message before their delivery, asking them to confirm the site is ready and share the gate contact. They can ask about their truck at any time.
+- **Customers order on WhatsApp:** "send 2 trucks to Wakad tomorrow 9 am" or "need 300 cartons at the Andheri store 10 am". The bot confirms with order numbers, the order appears on the board as **Needs truck**, and the clerks are alerted.
+- **Clerks assign a truck in one line:** `assign 101 MH12AB1234 98765 43210 Ramesh`, or with the form on the console. The driver gets the trip on WhatsApp, and every customer contact gets the truck and driver details.
+- **Customers** get a WhatsApp message before their delivery, asking them to confirm the site is ready and share the gate contact. They can ask about their truck at any time.
 - **Drivers** get a short check-in when their ETA is due or missed, never on a fixed schedule. "Traffic hai, 45 min lagega" updates the ETA; "tyre puncture" raises a critical alert.
 - **No reply after 20 minutes?** The bot calls them: a natural voice in their language that can be interrupted, through Twilio ConversationRelay, as a normal call or a WhatsApp call.
 - **Dispatch clerks** see one live board. Every alert goes to **all clerks on WhatsApp**, numbered: a clerk replies `take 12` to own it (the others are told, so nobody doubles up), `done 12` to close it, and `list` for what's open. The same Take and Close buttons are on the console.
@@ -17,13 +19,14 @@ npm install
 ANTHROPIC_API_KEY=sk-ant-... ADMIN_KEY=demo npm run dev
 ```
 
-Open http://localhost:8080, enter `demo`, then:
+Open http://localhost:8080, enter `demo`, pick an industry (**Building materials · Pune** or **FMCG distribution · Mumbai**), then:
 
 1. **Start demo day.** It's 9:00 AM at a Pune building-materials transporter with 5 trucks: cement, steel, M-sand, bricks. The bot immediately asks Patil Constructions to confirm their 11:00 AM delivery.
 2. **Reply as the client.** Open their chat and type something like *"haan site ready hai, gate pe Sunil milega 98765 43210"*. The delivery turns **Confirmed** and the site contact is saved.
 3. **+30 min.** Gurpreet's ETA is due, so the bot checks in. Reply *"traffic hai, 45 min lagega"*: his ETA moves and the card turns **Delayed**.
 4. **+1 hour.** Suresh never answered his check-in, so the bot **calls** him. Open his chat, press **Answer**, and talk to it by typing. It speaks Marathi or Hindi and updates the board from what you say.
-5. **Try a problem:** as a driver, type *"truck ka tyre puncture ho gaya"*. You get a critical **dispatcher alert**.
+5. **Place an order** as a customer: *"send 2 trip OPC to Wakad Residency 3 pm"*. Then assign a truck from its card, or as clerk 🎧 Anita type `assign 101 MH12AB1234 9876543210 Ramesh`.
+6. **Try a problem:** as a driver, type *"truck ka tyre puncture ho gaya"*. You get a critical **dispatcher alert**.
 
 The KPI row shows how many messages and call lines the AI handled, which is the number to talk about with a transporter.
 
@@ -48,7 +51,7 @@ Google Sheet / API ─► deliveries ─► rules (every minute) ─► WhatsApp
 | Driver silent | 20 min after asking | Call. Still nothing? **Critical** alert. |
 | Running late | ETA 45+ min after planned | Alert the dispatcher once |
 
-All timings are in `config/dispatch.json`, along with `shareDriverPhone`: clients get the driver's number when they ask, which is normal practice; set it to `false` to have the bot pass messages instead. Unknown numbers never get it.
+Company settings are in `config/dispatch.json`: `businessDescription` (one line, e.g. "FMCG cartons to retail stores", so the AI uses your industry's words), `defaultCountryCode` (`+91`, or `+971` for the UAE), all timings, along with `shareDriverPhone`: clients get the driver's number when they ask, which is normal practice; set it to `false` to have the bot pass messages instead. Unknown numbers never get it.
 
 Alerts the AI raises are de-duplicated: a repeat for the same delivery within 30 minutes is skipped unless it's more serious.
 
@@ -73,6 +76,8 @@ Alerts the AI raises are de-duplicated: a repeat for the same delivery within 30
    | `TEMPLATE_DISPATCHER_ALERT_EN` | ⚠️ {{1}} |
    | `TEMPLATE_CLIENT_UPDATE_EN` | Update on order {{1}} to {{2}}: {{3}}. |
    | `TEMPLATE_CLIENT_UPDATE_HI` | Order {{1}} ({{2}}) update: {{3}}. |
+   | `TEMPLATE_DRIVER_TRIP_EN` | New trip from {{1}}: order {{2}}, {{3}} to {{4}}, needed by {{5}}. Truck {{6}}. Please reply here with updates on the way. |
+   | `TEMPLATE_DRIVER_TRIP_HI` | {{1}} se naya trip: order {{2}}, {{3}} {{4}} tak, {{5}} tak pahunchana hai. Truck {{6}}. Raste ki update yahan reply karein. |
 
    Within 24 hours of someone's last message, the same texts go out as normal messages, so no template is needed then.
 3. **Calls (optional).**
@@ -111,6 +116,7 @@ All `/api/*` endpoints need the header `x-admin-key: $ADMIN_KEY`.
 ```
 GET  /api/state                 board: deliveries, alerts, chats, calls, clock
 POST /api/deliveries            { deliveries: [{ id, material, truck, plannedAt (ISO), client: {name, phone, language?}, driver: {…}, site: {name, area?, contact?} }] }
+POST /api/deliveries/assign     { ref, truck, driverPhone, driverName?, clerk? }
 POST /api/alerts/assign         { id, clerk }
 POST /api/alerts/resolve        { id, clerk? }
 POST /api/tick                  run the rules now
@@ -122,7 +128,7 @@ POST /api/demo/start | advance { minutes } | message { phone, text } | call { ca
 
 ```bash
 npm run typecheck
-npm test     # 20 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
+npm test     # 24 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
 ```
 
 | Path | What |

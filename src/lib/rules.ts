@@ -1,6 +1,6 @@
 import type { DispatchConfig } from './config';
 import { CLOSED, type Delivery } from './types';
-import { minutesBetween } from './clock';
+import { fmtTime, minutesBetween } from './clock';
 
 // The dispatch rules: given the deliveries and the time, decide what to do.
 // Pure function, no side effects, so it's easy to test and to reason about.
@@ -19,6 +19,19 @@ export function decide(deliveries: Delivery[], now: Date, cfg: DispatchConfig): 
 
   for (const d of deliveries) {
     if (CLOSED.includes(d.status) || d.status === 'issue' || d.status === 'rescheduled') continue;
+    // Ordered but no truck yet: nothing to ask anyone; nudge the clerks an hour before it's due.
+    if (d.status === 'requested') {
+      if (!d.flags?.unassignedAlertedAt && minutesBetween(now, d.plannedAt) <= 60) {
+        out.push({
+          kind: 'alert',
+          deliveryId: d.id,
+          severity: 'warning',
+          text: `Order #${d.number ?? d.orderNo} for ${d.client.name} (${d.material} to ${d.site.name}, due ${fmtTime(d.plannedAt)}) still has no truck.`,
+          flag: 'unassignedAlertedAt',
+        });
+      }
+      continue;
+    }
     const f = d.flags || {};
     const minsToPlanned = minutesBetween(now, d.plannedAt);
     const eta = d.eta || d.plannedAt;
@@ -38,7 +51,7 @@ export function decide(deliveries: Delivery[], now: Date, cfg: DispatchConfig): 
           kind: 'alert',
           deliveryId: d.id,
           severity: 'warning',
-          text: `${d.client.name} hasn't confirmed order ${d.orderNo}${cfg.callsEnabled ? ' (no reply on WhatsApp or the call)' : ''}. Site readiness unknown.`,
+          text: `${d.client.name} hasn't confirmed order ${d.orderNo}${cfg.callsEnabled ? ' (no reply on WhatsApp or the call)' : ''}. Readiness to receive unknown.`,
           flag: 'noReplyAlertedClientAt',
         });
       }

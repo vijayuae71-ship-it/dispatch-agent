@@ -3,6 +3,7 @@
 export type Party = 'client' | 'driver' | 'dispatcher';
 
 export type DeliveryStatus =
+  | 'requested' // ordered by the customer, no truck assigned yet
   | 'scheduled' // planned, client not yet confirmed
   | 'confirmed' // client confirmed the site is ready
   | 'en_route' // driver on the way, ETA on time
@@ -28,6 +29,10 @@ export interface Contact {
 export interface Delivery {
   /** Usually the order number. */
   id: string;
+  /** Short number clerks type ("assign 101 …"), for orders taken by the bot. */
+  number?: number;
+  /** Phone of whoever placed the order on WhatsApp. */
+  requestedBy?: string;
   orderNo: string;
   material: string;
   client: Contact;
@@ -58,8 +63,9 @@ export interface Delivery {
     noReplyAlertedDriverAt?: string;
     /** Last status the client contacts were told about, so each change is announced once. */
     notifiedStatus?: string;
+    unassignedAlertedAt?: string;
   };
-  source?: 'sheet' | 'api' | 'demo';
+  source?: 'sheet' | 'api' | 'demo' | 'whatsapp';
   sheetRow?: number;
   updatedAt: string;
 }
@@ -102,6 +108,8 @@ export interface Alert {
   text: string;
   at: string;
   resolved?: boolean;
+  /** "needs_truck" alerts close themselves when a truck is assigned. */
+  kind?: 'needs_truck';
 }
 
 /** A voice call placed when someone doesn't answer on WhatsApp. */

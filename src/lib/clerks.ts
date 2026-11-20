@@ -5,6 +5,7 @@ import { templateVars } from './templates';
 import { findAlertByNumber, getAlert, listAlerts, resolveAlert, saveAlert } from './store';
 import { nowIso } from './clock';
 import type { Alert } from './types';
+import { assignTruck, parseAssign } from './assign';
 
 // The dispatch clerks' side. Every alert goes to every clerk on WhatsApp with
 // a number; a clerk replies "take 12" to own it (the others are told, so no
@@ -78,13 +79,15 @@ export async function openAlertsText(): Promise<string> {
   ].join('\n');
 }
 
-const HELP = 'Commands: "take 12" to handle alert #12 · "done 12" when it\'s sorted · "list" for open alerts.';
+const HELP = 'Commands: "take 12" to handle alert #12 · "done 12" when it\'s sorted · "list" for open alerts · "assign 101 TRUCK DRIVER-PHONE NAME" to put a truck on order 101.';
 
 /** A clerk wrote to the bot on WhatsApp. Returns the reply sent. */
 export async function handleClerkMessage(phone: string, name: string, text: string): Promise<string> {
+  const assign = parseAssign(text);
   const cmd = parseClerkCommand(text);
   let reply: string;
-  if (cmd.kind === 'list') reply = await openAlertsText();
+  if (assign) reply = (await assignTruck({ ...assign, by: name })).message;
+  else if (cmd.kind === 'list') reply = await openAlertsText();
   else if (cmd.kind === 'help') reply = HELP;
   else {
     const a = await findAlertByNumber(cmd.n);
