@@ -10,6 +10,7 @@
     --bg: #f3f4f1; --card: #ffffff; --ink: #1b211e; --muted: #5d6862; --line: #e2e5e0;
     --accent: #2f6b4f; --accent-ink: #fff; --soft: #eef3ef;
     --wa-bg: #efeae2; --wa-in: #ffffff; --wa-out: #d9fdd3; --wa-ink: #111b21;
+    --s-requested: #fde7c8; --s-requested-ink: #7a3f00;
     --s-scheduled: #e8eaf0; --s-scheduled-ink: #3b4256;
     --s-confirmed: #dcefff; --s-confirmed-ink: #0b4d80;
     --s-en_route: #dff5e6; --s-en_route-ink: #145a32;
@@ -26,6 +27,7 @@
       --bg: #121614; --card: #1a201d; --ink: #e6ebe8; --muted: #9aa6a0; --line: #2a322e;
       --accent: #6db38c; --accent-ink: #0c1510; --soft: #1f2a24;
       --wa-bg: #0b141a; --wa-in: #202c33; --wa-out: #005c4b; --wa-ink: #e9edef;
+      --s-requested: #4a3214; --s-requested-ink: #ffd49a;
       --s-scheduled: #2a2e38; --s-scheduled-ink: #c8cee0;
       --s-confirmed: #12324d; --s-confirmed-ink: #b9dcff;
       --s-en_route: #143522; --s-en_route-ink: #b6eac6;
@@ -80,6 +82,8 @@
   .dl .row span b { font-weight: 600; }
   .status { border-radius: 99px; padding: 2px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; align-self: start; }
   .late { color: var(--warn); font-weight: 700; }
+  .assign { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .assign input { flex: 1 1 110px; padding: 6px 8px; font-size: 13px; }
   .issue { color: var(--crit); font-weight: 600; }
   .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; }
   .alerts { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
@@ -88,7 +92,13 @@
   .alert.warning { border-color: var(--warn); }
   .alert.resolved { opacity: .5; }
   .alert .t { color: var(--muted); font-size: 11px; white-space: nowrap; }
-  .alert .x { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+  .alert .x { padding: 1px 8px; font-size: 12px; }
+  .alert .body { flex: 1; min-width: 0; }
+  .alert .acts { display: flex; gap: 4px; flex-shrink: 0; }
+  .alert .num { font-weight: 700; margin-right: 4px; }
+  .owner { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 0 8px; background: var(--card); border: 1px solid var(--line); }
+  .whoami { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .whoami select { font-size: 12px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); }
   .contacts { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
   .contact { white-space: nowrap; border-radius: 99px; padding: 5px 12px; font-size: 13px; position: relative; }
   .contact[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -118,6 +128,25 @@
   .err { color: var(--crit); }
   .login { max-width: 380px; margin: 70px auto; }
   .typing { align-self: flex-start; font-size: 12px; color: var(--muted); padding: 2px 6px; }
+  .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); overflow-y: auto; padding: 24px 12px; }
+  .modal { max-width: 640px; margin: 0 auto 24px; }
+  .modal h2 { font-size: 18px; margin: 0 0 4px; }
+  .modal label.f2 { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; margin-top: 12px; }
+  .modal input, .modal select, .modal textarea { font-weight: 400; width: 100%; }
+  .modal textarea { font-family: inherit; font-size: 14px; }
+  .modal fieldset { border: 0; padding: 0; margin: 14px 0 0; }
+  .modal legend { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .choices { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .choice { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+  .choice input { width: auto; margin-top: 3px; }
+  .choice:has(input:checked) { border-color: var(--accent); background: var(--soft); }
+  .choice small { display: block; color: var(--muted); font-size: 11.5px; }
+  .clerkrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px; margin-bottom: 6px; }
+  .clerkrow button { padding: 4px 10px; }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .tpl { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 13px; }
+  .tpl code { font-weight: 700; font-size: 12px; }
+  .tpl div { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
   .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   .kpi .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -148,10 +177,14 @@
     <div class="clock" id="clock" title="Dispatch clock"></div>
     <div class="spacer"></div>
     <div class="controls" id="demoControls">
+      <select id="scenario" aria-label="Demo scenario"></select>
       <button id="startDemo" class="primary">▶ Start demo day</button>
       <button data-adv="15">+15 min</button>
       <button data-adv="30">+30 min</button>
       <button data-adv="60">+1 hour</button>
+    </div>
+    <div class="controls">
+      <button id="openSetup" title="Company, industry, region and clerks">⚙ Setup</button>
     </div>
     <div class="controls" id="liveControls">
       <button id="runRules">Run rules now</button>
@@ -173,7 +206,8 @@
       </section>
       <div data-pane="side" style="display:flex;flex-direction:column;gap:14px">
         <section class="card">
-          <h2>Dispatcher alerts <span class="count" id="aCount"></span></h2>
+          <h2>Dispatcher alerts <span class="count" id="aCount"></span>
+            <label class="whoami">You are <select id="whoami" aria-label="Which clerk are you"></select></label></h2>
           <div id="alerts" class="alerts"></div>
         </section>
         <section class="card">
@@ -188,12 +222,35 @@
   </main>
 </div>
 
+<div id="setupOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <form id="setupForm" class="card modal">
+    <h2 id="setupTitle">Set up your dispatcher</h2>
+    <p class="sub">A one-time setup. The bot's messages, questions and what it treats as urgent are tailored to your industry. You can change this later under ⚙ Setup.</p>
+    <label class="f2">Company name <input name="company" required maxlength="80" autocomplete="organization"></label>
+    <label class="f2">Assistant's name <input name="agentName" maxlength="40" placeholder="Asha"></label>
+    <fieldset><legend>Industry</legend><div id="industryChoices" class="choices"></div></fieldset>
+    <label class="f2">Region <select name="region" id="regionSel"></select></label>
+    <label class="f2">What you deliver, in one line <textarea name="businessDescription" id="bizDesc" rows="2" maxlength="300"></textarea></label>
+    <fieldset><legend>Dispatch clerks: they get alerts on WhatsApp</legend><div id="clerkRows"></div>
+      <button type="button" class="link" id="addClerk">+ Add clerk</button></fieldset>
+    <p id="setupErr" class="err"></p>
+    <div class="actions"><button type="button" id="setupCancel">Cancel</button><button class="primary" id="setupSave">Save setup</button></div>
+  </form>
+  <div id="setupDone" class="card modal hidden">
+    <h2>✅ Setup saved</h2>
+    <p>Messages are now tailored for <b id="doneIndustry"></b>.</p>
+    <p class="sub">To go live, register these WhatsApp templates once in Twilio (Content Template Builder, category <b>Utility</b>), then put each one's Content SID in the environment variable shown. The demo doesn't need them.</p>
+    <div id="templateList"></div>
+    <div class="actions"><button class="primary" id="setupClose" type="button">Done</button></div>
+  </div>
+</div>
+
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); Object.assign(n, props); for (const k of kids) if (k != null && k !== false) n.append(k); return n; };
   const store = { get() { try { return sessionStorage.getItem('dispatch_key') || ''; } catch { return ''; } }, set(v) { try { sessionStorage.setItem('dispatch_key', v); } catch {} } };
-  const STATUS_LABEL = { scheduled: 'Scheduled', confirmed: 'Confirmed', en_route: 'On the way', delayed: 'Delayed', arrived: 'Arrived', delivered: 'Delivered', rescheduled: 'Reschedule asked', issue: 'Issue', cancelled: 'Cancelled' };
+  const STATUS_LABEL = { requested: 'Needs truck', scheduled: 'Scheduled', confirmed: 'Confirmed', en_route: 'On the way', delayed: 'Delayed', arrived: 'Arrived', delivered: 'Delivered', rescheduled: 'Reschedule asked', issue: 'Issue', cancelled: 'Cancelled' };
   const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
 
   let key = store.get();
@@ -218,7 +275,7 @@
   function showLogin(msg) { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('loginErr').textContent = msg || ''; }
   $('login').addEventListener('submit', async (e) => {
     e.preventDefault(); key = $('key').value.trim(); store.set(key);
-    try { S = await api('/api/state'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); }
+    try { S = await api('/api/state'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); if (S.mode === 'live' && !S.setupAt) openSetup(); }
     catch (err) { showLogin(err.message); }
   });
 
@@ -227,8 +284,10 @@
     const map = new Map();
     for (const d of S.deliveries) {
       if (!map.has(d.client.phone)) map.set(d.client.phone, { phone: d.client.phone, name: d.client.name, party: 'client', sub: `Client · ${d.site.name}` });
-      if (!map.has(d.driver.phone)) map.set(d.driver.phone, { phone: d.driver.phone, name: d.driver.name, party: 'driver', sub: `Driver · ${d.truck}` });
+      if (d.driver.phone && !map.has(d.driver.phone)) map.set(d.driver.phone, { phone: d.driver.phone, name: d.driver.name, party: 'driver', sub: `Driver · ${d.truck}` });
+      for (const c of d.contacts || []) if (!map.has(c.phone)) map.set(c.phone, { phone: c.phone, name: c.name, party: 'client', sub: `${c.role || 'Contact'} · ${d.client.name}` });
     }
+    for (const c of S.clerks || []) if (!map.has(c.phone)) map.set(c.phone, { phone: c.phone, name: c.name, party: 'dispatcher', sub: 'Dispatch clerk' });
     for (const t of S.threads) if (!map.has(t.phone)) map.set(t.phone, { phone: t.phone, name: t.name || t.phone, party: t.party, sub: t.party });
     const last = (p) => (S.threads.find((t) => t.phone === p)?.updatedAt) || '';
     return [...map.values()].sort((a, b) => last(b.phone).localeCompare(last(a.phone)));
@@ -239,9 +298,14 @@
   // -------------------------------------------------------------- render
   function render() {
     $('mode').textContent = S.mode; $('mode').className = 'badge mode-' + S.mode;
-    $('company').textContent = `${S.company} · AI dispatcher "${S.agentName}" · ${S.store} store`;
+    $('company').textContent = `${S.company} · ${S.industry?.label || ''} · AI dispatcher "${S.agentName}"`;
     $('clock').textContent = S.clock.time;
     $('demoControls').classList.toggle('hidden', S.mode !== 'demo');
+    const sc = $('scenario');
+    if (S.scenarios && sc.options.length !== S.scenarios.length) {
+      sc.replaceChildren(...S.scenarios.map((x) => el('option', { value: x.id, textContent: x.label })));
+      try { const saved = localStorage.getItem('dispatch_scenario'); if (saved) sc.value = saved; } catch {}
+    }
     $('syncSheet').classList.toggle('hidden', !S.sheet);
     renderGuide(); renderKpis(); renderDeliveries(); renderAlerts(); renderContacts(); renderPhone();
   }
@@ -251,13 +315,23 @@
     if (S.mode !== 'demo') { g.innerHTML = ''; g.append(el('span', { textContent: 'Live mode: messages and calls go to real phones through Twilio. Rules run every minute.' })); return; }
     g.replaceChildren();
     if (!S.deliveries.length) {
-      g.append(el('b', { textContent: 'Demo: ' }), 'press "Start demo day" to load a morning at a Pune building-materials transporter (5 trucks). Then move the clock and reply as clients and drivers on the right.');
+      g.append(el('b', { textContent: 'Demo: ' }), 'pick an industry and press "Start demo day" to load a morning with 5 trucks. Then move the clock and reply as customers, drivers and clerks on the right.', S.setupAt ? '' : ' Tip: ⚙ Setup tailors every message to your own industry and region.');
       return;
     }
     const ringing = S.calls.find((c) => c.status === 'ringing');
     const unanswered = S.threads.find((t) => t.messages.length && t.messages[t.messages.length - 1].direction === 'out' && t.messages[t.messages.length - 1].channel === 'whatsapp');
+    const needsTruck = S.deliveries.find((d) => d.status === 'requested');
+    if (needsTruck && !S.calls.find((c) => c.status === 'ringing')) {
+      g.append(el('b', { textContent: 'New order: ' }), `#${needsTruck.number} needs a truck. Fill in the form on its card, or as a clerk on WhatsApp send "assign ${needsTruck.number} MH12AB1234 9876543210 Ramesh". The driver gets the trip and the customer gets the truck details.`);
+      return;
+    }
+    const freshAlert = S.alerts.find((x) => !x.resolved && !x.assignedTo);
+    if (freshAlert && (S.clerks || []).length && !ringing) {
+      g.append(el('b', { textContent: 'Clerks: ' }), `alert #${freshAlert.number} went to all ${S.clerks.length} clerks on WhatsApp. Open 🎧 ${S.clerks[0].name}'s chat and reply "take ${freshAlert.number}" (the others are told), or press Take on the alert.`);
+      return;
+    }
     if (ringing) g.append(el('b', { textContent: 'Escalation call: ' }), `the bot is calling ${ringing.phone === selected ? 'this contact' : nameOf(ringing.phone)} because WhatsApp got no reply. Open their chat and press Answer to talk to it (type what you'd say).`);
-    else if (unanswered) g.append(el('b', { textContent: 'Try it: ' }), `the bot messaged ${nameOf(unanswered.phone)}. Open their chat and reply as them, in any language: e.g. "haan site ready hai", "traffic hai, 45 min lagega", "truck ka tyre puncture ho gaya". Or ignore it and add +30 min to see the bot call them.`);
+    else if (unanswered) g.append(el('b', { textContent: 'Try it: ' }), `the bot messaged ${nameOf(unanswered.phone)}. Open their chat and reply as them, in any language: e.g. "haan ready hai", "traffic hai, 45 min lagega", "truck ka tyre puncture ho gaya". Customers can also place orders: "send 2 trucks tomorrow 9 am". Or ignore it and add +30 min to see the bot call them.`);
     else g.append(el('b', { textContent: 'Next: ' }), 'move the clock forward. The bot asks clients to confirm 2 hours before delivery and checks on drivers when an ETA is due or missed.');
   }
   const nameOf = (phone) => contacts().find((c) => c.phone === phone)?.name || phone;
@@ -269,7 +343,7 @@
     const k = [
       [count((d) => ['en_route', 'delayed', 'arrived'].includes(d.status)), 'Trucks on the road'],
       [count((d) => d.status === 'delayed' || d.status === 'issue'), 'Need attention'],
-      [count((d) => d.clientConfirmedAt), 'Clients confirmed'],
+      [count((d) => d.clientConfirmedAt), 'Customers confirmed'],
       [msgsOut, 'Messages & call lines handled by AI'],
     ];
     $('kpis').replaceChildren(...k.map(([n, l]) => el('div', { className: 'kpi' }, el('div', { className: 'n', textContent: String(n) }), el('div', { className: 'l', textContent: l }))));
@@ -277,6 +351,9 @@
 
   function renderDeliveries() {
     $('dCount').textContent = S.deliveries.length;
+    // Don't redraw while a clerk is typing into an assign form.
+    const typingIn = [...document.querySelectorAll('.assign input')].some((i) => i.value || i === document.activeElement);
+    if (typingIn) return;
     if (!S.deliveries.length) return $('deliveries').replaceChildren(el('div', { className: 'empty', textContent: S.mode === 'demo' ? 'No deliveries yet. Press "Start demo day".' : 'No deliveries yet. Add rows to the Google Sheet or POST /api/deliveries.' }));
     $('deliveries').replaceChildren(...S.deliveries.map((d) => {
       const lateMin = d.eta ? Math.round((Date.parse(d.eta) - Date.parse(d.plannedAt)) / 60000) : 0;
@@ -285,21 +362,43 @@
         el('span', { className: 'status', textContent: STATUS_LABEL[d.status] || d.status, style: `background:var(--s-${d.status});color:var(--s-${d.status}-ink)` }),
         el('div', { className: 'row' },
           el('span', {}, '🏗 ', el('b', { textContent: d.client.name }), ` · ${d.site.name}`),
-          el('span', {}, '🚚 ', el('b', { textContent: d.truck }), ` · ${d.driver.name}`)),
+          d.truck ? el('span', {}, '🚚 ', el('b', { textContent: d.truck }), ` · ${d.driver.name}`) : el('span', { className: 'late', textContent: '🚚 No truck yet' })),
         el('div', { className: 'row' },
           el('span', { textContent: `Planned ${fmt(d.plannedAt)}` }),
           d.eta && d.eta !== d.plannedAt ? el('span', { className: lateMin >= 20 ? 'late' : '', textContent: `ETA ${fmt(d.eta)}${lateMin > 0 ? ` (+${lateMin} min)` : ''}` }) : null,
           d.lastLocation ? el('span', { textContent: `📍 ${d.lastLocation}` }) : null,
           d.site.contact ? el('span', { textContent: `☎ Site: ${d.site.contact}` }) : null,
+          (d.contacts || []).length ? el('span', { textContent: `👥 ${d.contacts.map((c) => c.role ? `${c.name} (${c.role})` : c.name).join(', ')}` }) : null,
           d.rescheduledTo ? el('span', { className: 'late', textContent: `Asked for ${fmt(d.rescheduledTo)}` }) : null),
         d.issue ? el('div', { className: 'row issue', textContent: `⚠ ${d.issue}` }) : null,
+        d.status === 'requested' ? assignForm(d) : null,
         el('div', { className: 'row' },
           chatLink(d.client.phone, `Chat with client`),
-          chatLink(d.driver.phone, `Chat with driver`)));
+          d.driver.phone ? chatLink(d.driver.phone, `Chat with driver`) : null));
       if (prevStatus.has(d.id) && prevStatus.get(d.id) !== d.status) card.classList.add('flash');
       prevStatus.set(d.id, d.status);
       return card;
     }));
+  }
+  function assignForm(d) {
+    const truck = el('input', { placeholder: 'Truck no.', autocomplete: 'off' });
+    const phone = el('input', { placeholder: 'Driver phone', inputMode: 'tel', autocomplete: 'off' });
+    const name = el('input', { placeholder: 'Driver name', autocomplete: 'off' });
+    const go = el('button', { className: 'primary', textContent: 'Assign', type: 'submit' });
+    const f = el('form', { className: 'assign' }, truck, phone, name, go);
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!truck.value.trim() || !phone.value.trim()) return alert('Truck number and driver phone are needed.');
+      go.disabled = true;
+      try {
+        await api('/api/deliveries/assign', { ref: d.id, truck: truck.value.trim(), driverPhone: phone.value.trim(), driverName: name.value.trim(), clerk: me.get() || 'Dispatcher' });
+        truck.value = phone.value = name.value = '';
+        if (document.activeElement) document.activeElement.blur();
+      }
+      catch (err) { alert(err.message); }
+      finally { go.disabled = false; refresh(); }
+    });
+    return f;
   }
   function chatLink(phone, label) {
     const b = el('button', { className: 'link', textContent: label, type: 'button' });
@@ -307,16 +406,51 @@
     return b;
   }
 
+  // Which clerk is using this console (remembered on this device).
+  const me = { get() { try { return localStorage.getItem('dispatch_clerk') || ''; } catch { return ''; } }, set(v) { try { localStorage.setItem('dispatch_clerk', v); } catch {} } };
+  function renderWhoami() {
+    const sel = $('whoami');
+    const names = (S.clerks || []).map((c) => c.name);
+    const cur = me.get();
+    const opts = [el('option', { value: '', textContent: names.length ? 'choose…' : 'Dispatcher' }), ...names.map((n) => el('option', { value: n, textContent: n, selected: n === cur }))];
+    if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i].value)) sel.replaceChildren(...opts);
+    sel.value = names.includes(cur) ? cur : '';
+  }
+  $('whoami').addEventListener('change', (e) => { me.set(e.target.value); render(); });
+
+  async function alertAction(path, a) {
+    const clerk = me.get() || ((S.clerks || []).length ? '' : 'Dispatcher');
+    if (!clerk) { alert('Choose who you are first ("You are" above the alerts).'); return; }
+    try { await api(path, { id: a.id, clerk }); }
+    catch (e) { alert(e.message); }
+    refresh();
+  }
+
   function renderAlerts() {
+    renderWhoami();
     const open = S.alerts.filter((a) => !a.resolved);
     $('aCount').textContent = open.length;
-    if (!S.alerts.length) return $('alerts').replaceChildren(el('div', { className: 'empty', style: 'padding:10px', textContent: 'No alerts. The bot raises one when a human is needed.' }));
+    if (!S.alerts.length) return $('alerts').replaceChildren(el('div', { className: 'empty', style: 'padding:10px', textContent: 'No alerts. The bot raises one when a human is needed, and sends it to every clerk on WhatsApp.' }));
     const sorted = [...S.alerts].sort((a, b) => (a.resolved === b.resolved ? b.at.localeCompare(a.at) : a.resolved ? 1 : -1));
     $('alerts').replaceChildren(...sorted.map((a) => {
-      const x = el('button', { className: 'x', textContent: a.resolved ? 'Done' : 'Resolve', disabled: !!a.resolved, type: 'button' });
-      x.addEventListener('click', async () => { await api('/api/alerts/resolve', { id: a.id }); refresh(); });
+      const acts = el('div', { className: 'acts' });
+      if (!a.resolved && !a.assignedTo) {
+        const take = el('button', { className: 'x', textContent: 'Take', type: 'button' });
+        take.addEventListener('click', () => alertAction('/api/alerts/assign', a));
+        acts.append(take);
+      }
+      if (!a.resolved) {
+        const close = el('button', { className: 'x', textContent: 'Close', type: 'button' });
+        close.addEventListener('click', () => alertAction('/api/alerts/resolve', a));
+        acts.append(close);
+      }
+      const owner = a.resolved
+        ? el('span', { className: 'owner', textContent: `✅ Closed${a.resolvedBy ? ` by ${a.resolvedBy}` : ''}` })
+        : a.assignedTo ? el('span', { className: 'owner', textContent: `✋ ${a.assignedTo}` }) : null;
       return el('div', { className: `alert ${a.severity}${a.resolved ? ' resolved' : ''}` },
-        el('span', { className: 't', textContent: fmt(a.at) }), el('span', { textContent: a.text }), x);
+        el('span', { className: 't', textContent: fmt(a.at) }),
+        el('div', { className: 'body' }, el('span', { className: 'num', textContent: a.number ? `#${a.number}` : '' }), el('span', { textContent: a.text }), owner ? el('div', {}, owner) : null),
+        acts);
     }));
   }
 
@@ -324,7 +458,7 @@
     const cs = contacts();
     if (!selected && cs.length) selected = cs[0].phone;
     $('contacts').replaceChildren(...cs.map((c) => {
-      const b = el('button', { className: 'contact', type: 'button', textContent: `${c.party === 'driver' ? '🚚' : c.party === 'client' ? '🏗' : '👤'} ${c.name}` });
+      const b = el('button', { className: 'contact', type: 'button', textContent: `${c.party === 'driver' ? '🚚' : c.party === 'client' ? '🏗' : c.party === 'dispatcher' ? '🎧' : '👤'} ${c.name}` });
       b.setAttribute('aria-pressed', String(c.phone === selected));
       if (activeCall(c.phone)) b.append(el('span', { className: 'dot', title: 'Call' }));
       b.addEventListener('click', () => { selected = c.phone; render(); });
@@ -411,7 +545,12 @@
     catch (e) { alert(e.message); }
     finally { busy = false; document.querySelectorAll('header button').forEach((b) => (b.disabled = false)); if (btn) btn.textContent = btn.dataset.label; refresh(); }
   }
-  $('startDemo').addEventListener('click', (e) => { selected = ''; control('/api/demo/start', {}, e.target); });
+  $('startDemo').addEventListener('click', (e) => {
+    selected = '';
+    const scenario = $('scenario').value || 'construction';
+    try { localStorage.setItem('dispatch_scenario', scenario); } catch {}
+    control('/api/demo/start', { scenario }, e.target);
+  });
   document.querySelectorAll('[data-adv]').forEach((b) => b.addEventListener('click', () => control('/api/demo/advance', { minutes: Number(b.dataset.adv) }, b)));
   $('runRules').addEventListener('click', (e) => control('/api/tick', {}, e.target));
   $('syncSheet').addEventListener('click', (e) => control('/api/sync', {}, e.target));
@@ -422,11 +561,68 @@
   }
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => selectTab(b.dataset.tab)));
 
+  // --------------------------------------------------------------- setup
+  let setupData = null;
+  let descEdited = false;
+  function clerkRow(c = { name: '', phone: '' }) {
+    const name = el('input', { placeholder: 'Name', value: c.name, autocomplete: 'off' });
+    const phone = el('input', { placeholder: 'WhatsApp number', value: c.phone, inputMode: 'tel', autocomplete: 'off' });
+    const rm = el('button', { type: 'button', textContent: '✕', title: 'Remove' });
+    const row = el('div', { className: 'clerkrow' }, name, phone, rm);
+    rm.addEventListener('click', () => row.remove());
+    return row;
+  }
+  async function openSetup() {
+    try { setupData = await api('/api/setup'); } catch (e) { return alert(e.message); }
+    const st = setupData.settings;
+    const f = $('setupForm');
+    f.company.value = st.setupAt ? st.company : '';
+    f.agentName.value = st.agentName || 'Asha';
+    $('industryChoices').replaceChildren(...setupData.industries.map((i) => {
+      const r = el('input', { type: 'radio', name: 'industry', value: i.id, checked: st.setupAt ? i.id === st.industry : false, required: true });
+      r.addEventListener('change', () => { if (!descEdited) $('bizDesc').value = i.description; });
+      return el('label', { className: 'choice' }, r, el('span', {}, document.createTextNode(i.label), el('small', { textContent: i.description })));
+    }));
+    $('regionSel').replaceChildren(...setupData.regions.map((r) => el('option', { value: r.id, textContent: r.label, selected: r.id === st.region })));
+    $('bizDesc').value = st.businessDescription || '';
+    descEdited = !!(st.setupAt && st.businessDescription);
+    const rows = (st.setupAt ? st.dispatchers : []).map(clerkRow);
+    while (rows.length < 3) rows.push(clerkRow());
+    $('clerkRows').replaceChildren(...rows);
+    $('setupErr').textContent = '';
+    $('setupForm').classList.remove('hidden');
+    $('setupDone').classList.add('hidden');
+    $('setupOverlay').classList.remove('hidden');
+    f.company.focus();
+  }
+  $('bizDesc').addEventListener('input', () => { descEdited = true; });
+  $('addClerk').addEventListener('click', () => $('clerkRows').append(clerkRow()));
+  $('openSetup').addEventListener('click', openSetup);
+  $('setupCancel').addEventListener('click', () => $('setupOverlay').classList.add('hidden'));
+  $('setupClose').addEventListener('click', () => { $('setupOverlay').classList.add('hidden'); refresh(); });
+  $('setupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const clerks = [...$('clerkRows').children].map((r) => ({ name: r.children[0].value.trim(), phone: r.children[1].value.trim() })).filter((c) => c.name || c.phone);
+    $('setupSave').disabled = true;
+    $('setupErr').textContent = '';
+    try {
+      const r = await api('/api/setup/save', { company: f.company.value, agentName: f.agentName.value, industry: f.industry.value, region: f.region.value, businessDescription: f.businessDescription.value, clerks });
+      $('doneIndustry').textContent = setupData.industries.find((i) => i.id === r.settings.industry)?.label || r.settings.industry;
+      $('templateList').replaceChildren(...r.templates.map((t) => el('div', { className: 'tpl' }, el('code', { textContent: t.envKey }), el('div', { dir: 'auto', textContent: t.text }))));
+      $('setupForm').classList.add('hidden');
+      $('setupDone').classList.remove('hidden');
+      try { if (r.settings.industry === 'construction' || r.settings.industry === 'fmcg') localStorage.setItem('dispatch_scenario', r.settings.industry); } catch {}
+    } catch (err) { $('setupErr').textContent = err.message; }
+    finally { $('setupSave').disabled = false; }
+  });
+
   // ---------------------------------------------------------------- boot
   (async () => {
     if (!key) return showLogin('');
     try { S = await api('/api/state'); $('app').classList.remove('hidden'); render(); }
     catch (e) { return showLogin(e.message); }
+    if (S.mode === 'live' && !S.setupAt) openSetup();
     setInterval(() => { if (!busy && !document.hidden) refresh(); }, 2500);
   })();
 })();

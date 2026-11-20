@@ -100,3 +100,68 @@ test('voice splitter hides the language tag and metadata', () => {
   assert.equal(out, 'नमस्ते जी ');
   assert.match(s.meta, /"action":"end"/);
 });
+
+test('clerk commands are understood in English and Hinglish', async () => {
+  const { parseClerkCommand } = await import('../src/lib/clerks');
+  assert.deepEqual(parseClerkCommand('take 12'), { kind: 'take', n: 12 });
+  assert.deepEqual(parseClerkCommand('Take #12'), { kind: 'take', n: 12 });
+  assert.deepEqual(parseClerkCommand('12 mine'), { kind: 'take', n: 12 });
+  assert.deepEqual(parseClerkCommand('le 7'), { kind: 'take', n: 7 });
+  assert.deepEqual(parseClerkCommand('done 12'), { kind: 'done', n: 12 });
+  assert.deepEqual(parseClerkCommand('12 ho gaya'), { kind: 'done', n: 12 });
+  assert.deepEqual(parseClerkCommand('list'), { kind: 'list' });
+  assert.deepEqual(parseClerkCommand('what is happening?'), { kind: 'help' });
+});
+
+test('sheet "Other Contacts" cell becomes contacts with roles', async () => {
+  const { parseContacts } = await import('../src/lib/sheets');
+  const toPhone = (s: string) => { const p = s.replace(/[\s-]/g, ''); return /^\d{10}$/.test(p) ? `+91${p}` : p; };
+  assert.deepEqual(parseContacts('Sunil (Site engineer) 98765 43210; Meera +919812345678', toPhone), [
+    { name: 'Sunil', phone: '+919876543210', role: 'Site engineer' },
+    { name: 'Meera', phone: '+919812345678' },
+  ]);
+  assert.deepEqual(parseContacts('', toPhone), []);
+  assert.deepEqual(parseContacts('just a name', toPhone), []);
+});
+
+test('assign command parsing', async () => {
+  const { parseAssign } = await import('../src/lib/assign');
+  assert.deepEqual(parseAssign('assign 101 mh12ab1234 98765 43210 Ramesh Yadav'), { ref: '101', truck: 'MH12AB1234', driverPhone: '9876543210', driverName: 'Ramesh Yadav' });
+  assert.deepEqual(parseAssign('a #102 23758FUJ +971526063475'), { ref: '102', truck: '23758FUJ', driverPhone: '+971526063475', driverName: undefined });
+  assert.equal(parseAssign('take 12'), null);
+  assert.equal(parseAssign('assign 101 MH12'), null);
+});
+
+test('phone numbers are normalised with the company country code', async () => {
+  const { normalizePhone, config } = await import('../src/lib/config');
+  assert.equal(normalizePhone('98765 43210'), '+919876543210');
+  assert.equal(normalizePhone('+971 52 606 3475'), '+971526063475');
+  assert.equal(normalizePhone('00971526063475'), '+971526063475');
+  config().defaultCountryCode = '+971';
+  assert.equal(normalizePhone('0526063475'), '+971526063475');
+  config().defaultCountryCode = '+91';
+});
+
+test('templates follow the industry picked in setup', async () => {
+  const { templatesFor } = await import('../src/lib/templates');
+  const find = (ind: string, key: string) => templatesFor(ind).find((t) => t.envKey === key)!.text;
+  assert.match(find('construction', 'TEMPLATE_CLIENT_CONFIRM_EN'), /site is ready to unload/);
+  assert.match(find('cold_chain', 'TEMPLATE_DRIVER_ETA_EN'), /reefer temperature/);
+  assert.match(find('cold_chain', 'TEMPLATE_DRIVER_ETA_HI'), /temperature/);
+  assert.match(find('tankers', 'TEMPLATE_CLIENT_CONFIRM_EN'), /tank has enough space/);
+  assert.match(find('ecommerce', 'TEMPLATE_CLIENT_CONFIRM_EN'), /available at the address/);
+  // Every industry produces the same set of templates (only the wording differs).
+  assert.equal(templatesFor('fmcg').length, templatesFor('general').length);
+});
+
+test('UAE region sets country code, time zone and languages', async () => {
+  const { applySettings, config, normalizePhone } = await import('../src/lib/config');
+  const before = { ...config() };
+  applySettings({ company: 'Gulf Haulage', agentName: 'Sara', industry: 'tankers', region: 'AE', businessDescription: 'water tankers', dispatchers: [], setupAt: '2026-11-20T00:00:00Z' });
+  assert.equal(config().timezone, 'Asia/Dubai');
+  assert.equal(normalizePhone('0526063475'), '+971526063475');
+  assert.ok(config().languages.some((l) => l.code === 'ar-AE'));
+  applySettings({ company: before.company, agentName: before.agentName, industry: 'general', region: 'IN', businessDescription: '', dispatchers: [], setupAt: '' });
+  assert.equal(config().timezone, 'Asia/Kolkata');
+  assert.ok(config().languages.some((l) => l.code === 'mr-IN'), 'India keeps its language set');
+});

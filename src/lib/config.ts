@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { INDUSTRIES, REGIONS, type IndustryId, type RegionId } from './industries';
 
 // Company settings live in config/dispatch.json (see the example there).
 // Every timing can also be overridden by an environment variable.
@@ -17,9 +18,18 @@ export interface VoiceLanguage {
 
 export interface DispatchConfig {
   company: string;
+  /** Picked once during setup; tailors templates and the AI. */
+  industry: IndustryId;
+  region: RegionId;
+  /** When onboarding was completed (unset = show the setup wizard). */
+  setupAt?: string;
+  /** One line the AI uses for vocabulary, e.g. "bulk cement by bulker to plants and sites" or "FMCG cartons to retail stores". */
+  businessDescription?: string;
   /** Name the assistant uses, e.g. "Asha from Sharma Logistics dispatch". */
   agentName: string;
   timezone: string;
+  /** Added to 10-digit local numbers, e.g. "+91" (India) or "+971" (UAE). */
+  defaultCountryCode: string;
   /** Default language for outgoing messages when a contact has none set. */
   defaultLanguage: string;
   /** WhatsApp numbers (E.164) that receive alerts. */
@@ -38,13 +48,18 @@ export interface DispatchConfig {
   };
   /** Place voice calls when WhatsApp gets no reply. */
   callsEnabled: boolean;
+  /** Give clients the driver's phone number when they ask (normal practice in Indian logistics). */
+  shareDriverPhone: boolean;
   languages: VoiceLanguage[];
 }
 
 const DEFAULTS: DispatchConfig = {
   company: 'Demo Logistics',
+  industry: 'general',
+  region: 'IN',
   agentName: 'Asha',
   timezone: 'Asia/Kolkata',
+  defaultCountryCode: '+91',
   defaultLanguage: 'en-IN',
   dispatchers: [],
   rules: {
@@ -55,6 +70,7 @@ const DEFAULTS: DispatchConfig = {
     lateThresholdMin: 45,
   },
   callsEnabled: true,
+  shareDriverPhone: true,
   languages: [],
 };
 
@@ -72,15 +88,65 @@ export function loadConfig(path = process.env.CONFIG_FILE || 'config/dispatch.js
   cfg.rules.clientConfirmLeadMin = num('CLIENT_CONFIRM_LEAD_MIN') ?? cfg.rules.clientConfirmLeadMin;
   cfg.rules.noReplyMin = num('NO_REPLY_MIN') ?? cfg.rules.noReplyMin;
   if (process.env.COMPANY_NAME) cfg.company = process.env.COMPANY_NAME;
+  if (process.env.BUSINESS_DESCRIPTION) cfg.businessDescription = process.env.BUSINESS_DESCRIPTION;
   if (process.env.DISPATCHER_NUMBERS) {
+    // "Anita:+919800000001, Farhan:+919800000002" (names optional)
     cfg.dispatchers = process.env.DISPATCHER_NUMBERS.split(/[,;]/)
       .map((p) => p.trim())
       .filter(Boolean)
-      .map((phone, i) => ({ name: `Dispatcher ${i + 1}`, phone }));
+      .map((entry, i) => {
+        const m = entry.match(/^(.+?)\s*:\s*(\+?\d[\d\s]+)$/);
+        return m ? { name: m[1].trim(), phone: m[2].replace(/\s/g, '') } : { name: `Clerk ${i + 1}`, phone: entry };
+      });
   }
   if (process.env.CALLS_ENABLED) cfg.callsEnabled = process.env.CALLS_ENABLED === 'true';
+  if (process.env.SHARE_DRIVER_PHONE) cfg.shareDriverPhone = process.env.SHARE_DRIVER_PHONE === 'true';
   cached = cfg;
   return cfg;
+}
+
+/** "98765 43210" → "+919876543210"; "0501234567" → "+971501234567" with defaultCountryCode +971. */
+export function normalizePhone(raw: string): string {
+  const p = raw.replace(/[\s()-]/g, '');
+  if (!p) return '';
+  if (p.startsWith('+')) return p;
+  if (p.startsWith('00')) return '+' + p.slice(2);
+  const local = p.replace(/^0/, '');
+  const cc = config().defaultCountryCode;
+  if (local.length >= 8 && local.length <= 10) return cc + local;
+  return '+' + p;
+}
+
+/** What onboarding saves. Stored in the database and applied over the file/env defaults at startup. */
+export interface Settings {
+  company: string;
+  agentName: string;
+  industry: IndustryId;
+  region: RegionId;
+  businessDescription: string;
+  dispatchers: { name: string; phone: string }[];
+  setupAt: string;
+}
+
+let fileLanguages: VoiceLanguage[] | null = null;
+
+export function applySettings(s: Settings) {
+  const cfg = config();
+  if (!fileLanguages) fileLanguages = cfg.languages;
+  const region = REGIONS[s.region] || REGIONS.IN;
+  Object.assign(cfg, {
+    company: s.company,
+    agentName: s.agentName,
+    industry: INDUSTRIES[s.industry] ? s.industry : 'general',
+    region: region.id,
+    businessDescription: s.businessDescription,
+    dispatchers: s.dispatchers,
+    setupAt: s.setupAt,
+    defaultCountryCode: region.defaultCountryCode,
+    timezone: region.timezone,
+    defaultLanguage: region.defaultLanguage,
+    languages: region.languages || fileLanguages,
+  });
 }
 
 export function config(): DispatchConfig {

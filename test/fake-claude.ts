@@ -56,6 +56,23 @@ function textReply(text: string) {
       updates: [upd(id, { status: 'confirmed', confirmed: true, siteContact: line.includes('sunil') ? 'Sunil 9876543210' : null })],
       alert: null,
     };
+  if (line.includes('send 2 trip'))
+    return {
+      reply: '',
+      language: 'hi-IN',
+      updates: [],
+      alert: null,
+      newOrders: [{ what: 'OPC cement', trips: 2, location: 'Wakad Residency', requestedAt: new Date(Math.floor(Date.now() / 3600000) * 3600000 + 8 * 3600000).toISOString() }],
+    };
+  if (line.includes('number')) {
+    // Share the driver's number only if the dispatcher's data includes it.
+    const phone = text.match(/Driver: [^\n(]+\(phone (\+\d+)\)/)?.[1];
+    return phone
+      ? { reply: `Driver ka number ${phone} hai.`, language: 'hi-IN', updates: [], alert: null }
+      : { reply: 'Dispatcher aapko call karenge.', language: 'hi-IN', updates: [], alert: { deliveryId: id || null, severity: 'info', text: 'Caller asked for the driver number.' } };
+  }
+  if (line.includes('call back'))
+    return { reply: 'Ji, dispatcher aapko call karenge.', language: 'hi-IN', updates: [], alert: { deliveryId: id, severity: 'info', text: `Client asked for a call back about ${id}.` } };
   if (line.includes('kab'))
     return { reply: 'Aapka truck 11:00 AM tak pahunchne ki ummeed hai.', language: 'hi-IN', updates: [], alert: null };
   return { reply: 'Okay, noted. Thank you!', language: 'en-IN', updates: [], alert: null };

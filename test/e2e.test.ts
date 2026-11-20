@@ -196,3 +196,174 @@ test('live call over the ConversationRelay WebSocket', async () => {
   assert.equal(after.deliveries.find((d: any) => d.id === 'ORD-1042').lastLocation, 'Aundh');
   assert.equal(after.calls.find((c: any) => c.id === call.id).status, 'completed');
 });
+
+test("client gets the driver's number; an unknown caller doesn't", async () => {
+  await api('/api/demo/start', {});
+  await api('/api/demo/message', { phone: '+919000000101', text: 'driver ka number do' });
+  let s = (await api('/api/state')).json;
+  assert.match(thread(s, '+919000000101').messages.at(-1).text, /\+919000000201/); // Ramesh, ORD-1041's driver
+  assert.equal(s.alerts.length, 0, 'no alert needed when the bot can answer');
+
+  await api('/api/demo/message', { phone: '+919999999999', text: 'driver ka number do' });
+  const unknownReq = seen.filter((b) => !b.stream).at(-1);
+  assert.doesNotMatch(JSON.stringify(unknownReq), /\(phone \+91/);
+});
+
+test('a repeated request raises one alert, not two', async () => {
+  await api('/api/demo/start', {});
+  await api('/api/demo/message', { phone: '+919000000101', text: 'please call back' });
+  await api('/api/demo/message', { phone: '+919000000101', text: 'call back jaldi please' });
+  const s = (await api('/api/state')).json;
+  assert.equal(s.alerts.filter((a: any) => a.deliveryId === 'ORD-1041').length, 1);
+  // A more serious problem on the same delivery still gets through.
+  await api('/api/demo/message', { phone: '+919000000201', text: 'truck ka tyre puncture ho gaya' });
+  const after = (await api('/api/state')).json.alerts.filter((a: any) => a.deliveryId === 'ORD-1041');
+  assert.equal(after.length, 2);
+  assert.ok(after.some((a: any) => a.severity === 'critical'));
+});
+
+test('alerts go to every clerk; take and done work on WhatsApp and the console', async () => {
+  await api('/api/demo/start', {});
+  // A breakdown raises a critical alert → all three demo clerks get it with a number.
+  await api('/api/demo/message', { phone: '+919000000205', text: 'truck ka tyre puncture ho gaya' });
+  let s = (await api('/api/state')).json;
+  assert.equal(s.clerks.length, 3);
+  const a = s.alerts.find((x: any) => x.severity === 'critical');
+  for (const c of s.clerks) assert.match(thread(s, c.phone).messages.at(-1).text, new RegExp(`#${a.number}:.*take ${a.number}`));
+
+  // Anita takes it on WhatsApp; Farhan and Joseph are told; Farhan can't take it too.
+  await api('/api/demo/message', { phone: '+919000000901', text: `take ${a.number}` });
+  s = (await api('/api/state')).json;
+  assert.equal(s.alerts.find((x: any) => x.id === a.id).assignedTo, 'Anita');
+  assert.match(thread(s, '+919000000901').messages.at(-1).text, /is yours/);
+  assert.match(thread(s, '+919000000902').messages.at(-1).text, /Anita took #/);
+  await api('/api/demo/message', { phone: '+919000000902', text: `take ${a.number}` });
+  s = (await api('/api/state')).json;
+  assert.match(thread(s, '+919000000902').messages.at(-1).text, /already with Anita/);
+
+  // "list" shows it; Anita closes it.
+  await api('/api/demo/message', { phone: '+919000000903', text: 'list' });
+  s = (await api('/api/state')).json;
+  assert.match(thread(s, '+919000000903').messages.at(-1).text, new RegExp(`#${a.number}.*Anita`));
+  await api('/api/demo/message', { phone: '+919000000901', text: `done ${a.number}` });
+  s = (await api('/api/state')).json;
+  const closed = s.alerts.find((x: any) => x.id === a.id);
+  assert.equal(closed.resolved, true);
+  assert.equal(closed.resolvedBy, 'Anita');
+
+  // Console: Take/Close by a named clerk.
+  await api('/api/demo/message', { phone: '+919000000101', text: 'please call back' });
+  s = (await api('/api/state')).json;
+  const b = s.alerts.find((x: any) => !x.resolved);
+  assert.equal((await api('/api/alerts/assign', { id: b.id, clerk: 'Joseph' })).status, 200);
+  assert.equal((await api('/api/alerts/assign', { id: b.id, clerk: 'Farhan' })).status, 409);
+  assert.equal((await api('/api/alerts/resolve', { id: b.id, clerk: 'Joseph' })).status, 200);
+});
+
+test('site engineers are recognised, and every client contact hears about delays', async () => {
+  await api('/api/demo/start', {});
+  // Sunil, Patil Constructions' site engineer, asks about the truck: treated as the client.
+  await api('/api/demo/message', { phone: '+919000000111', text: 'truck kab aayega?' });
+  const req = seen.filter((b) => !b.stream).at(-1);
+  assert.match(JSON.stringify(req), /Sunil \(Site engineer\), Patil Constructions \(client\)/);
+  assert.match(JSON.stringify(req), /ORD-1041/);
+
+  // Gurpreet runs late → Deshmukh & Sons and their site supervisor both get a WhatsApp update, once.
+  await api('/api/demo/advance', { minutes: 30 });
+  await api('/api/demo/message', { phone: '+919000000205', text: 'traffic hai, 45 min lagega' });
+  await api('/api/demo/message', { phone: '+919000000205', text: 'traffic hai, 45 min lagega' });
+  const s = (await api('/api/state')).json;
+  for (const phone of ['+919000000105', '+919000000115']) {
+    const updates = thread(s, phone).messages.filter((m: any) => /ORD-1045.*(late|update)/i.test(m.text));
+    assert.equal(updates.length, 1, `one delay update for ${phone}`);
+  }
+});
+
+test('a customer orders on WhatsApp; a clerk assigns a truck; driver and customer are told', async () => {
+  await api('/api/demo/start', {});
+  // Patil Constructions orders 2 trips: two "needs truck" orders, numbered, one confirmation.
+  await api('/api/demo/message', { phone: '+919000000101', text: 'send 2 trip OPC Wakad Residency 3 pm' });
+  let s = (await api('/api/state')).json;
+  const orders = s.deliveries.filter((d: any) => d.status === 'requested');
+  assert.deepEqual(orders.map((d: any) => d.number).sort(), [101, 102]);
+  assert.equal(orders[0].client.name, 'Patil Constructions');
+  assert.equal(orders[0].contacts.length, 2, 'customer contacts carried onto the order');
+  assert.match(thread(s, '+919000000101').messages.at(-1).text, /#101, #102/);
+  assert.equal(s.alerts.filter((a: any) => a.kind === 'needs_truck' && !a.resolved).length, 2);
+  assert.match(thread(s, '+919000000901').messages.at(-1).text, /assign 10[12]/);
+
+  // Saying it again doesn't double the order.
+  await api('/api/demo/message', { phone: '+919000000101', text: 'send 2 trip OPC Wakad Residency 3 pm' });
+  s = (await api('/api/state')).json;
+  assert.equal(s.deliveries.filter((d: any) => d.status === 'requested').length, 2);
+  assert.match(thread(s, '+919000000101').messages.at(-1).text, /already noted|pehle se note/); // replied in their language
+
+  // Anita assigns #101 on WhatsApp.
+  await api('/api/demo/message', { phone: '+919000000901', text: 'assign 101 mh12ab1234 98765 43210 Ramesh Yadav' });
+  s = (await api('/api/state')).json;
+  const d101 = s.deliveries.find((d: any) => d.number === 101);
+  assert.equal(d101.status, 'scheduled');
+  assert.equal(d101.truck, 'MH12AB1234');
+  assert.deepEqual([d101.driver.name, d101.driver.phone], ['Ramesh Yadav', '+919876543210']);
+  assert.ok(s.alerts.find((a: any) => a.deliveryId === d101.id && a.kind === 'needs_truck').resolved, 'needs-truck alert closed');
+  assert.match(thread(s, '+919876543210').messages.at(-1).text, /(New trip from|naya trip).*order 101.*Wakad Residency.*MH12AB1234/);
+  for (const phone of ['+919000000101', '+919000000111', '+919000000121']) {
+    assert.match(thread(s, phone).messages.at(-1).text, /MH12AB1234.*Ramesh Yadav/);
+  }
+  assert.match(thread(s, '+919000000902').messages.at(-1).text, /Anita assigned MH12AB1234/);
+  assert.match(thread(s, '+919000000901').messages.at(-1).text, /Driver and customer informed/);
+
+  // The console assigns #102; a bad phone number is refused.
+  assert.equal((await api('/api/deliveries/assign', { ref: '102', truck: 'MH14XY0001', driverPhone: 'abc', clerk: 'Joseph' })).status, 409);
+  assert.equal((await api('/api/deliveries/assign', { ref: '102', truck: 'MH14XY0001', driverPhone: '9123456780', driverName: 'Sanjay', clerk: 'Joseph' })).status, 200);
+  s = (await api('/api/state')).json;
+  assert.equal(s.deliveries.filter((d: any) => d.status === 'requested').length, 0);
+});
+
+test('FMCG scenario: same product, different industry', async () => {
+  const s = (await api('/api/demo/start', { scenario: 'fmcg' })).json;
+  assert.equal(s.deliveries.length, 5);
+  assert.ok(s.deliveries.some((d: any) => /cartons/.test(d.material)));
+  assert.ok(s.scenarios.some((x: any) => x.id === 'fmcg'));
+  assert.equal((await api('/api/demo/start', { scenario: 'nope' })).status, 400);
+  // The bot's first message uses neutral wording, not construction terms.
+  assert.match(thread(s, '+919000000303').messages[0].text, /to receive and count the goods/); // FMCG wording
+});
+
+// Keep last: it changes the company settings for this server.
+test('one-time setup tailors the bot to the industry and region', async () => {
+  let g = (await api('/api/setup')).json;
+  assert.equal(g.industries.length, 6);
+  assert.equal((await api('/api/setup/save', { industry: 'cold_chain' })).status, 400, 'company is required');
+  assert.equal((await api('/api/setup/save', { company: 'X', industry: 'rockets' })).status, 400);
+  assert.equal((await api('/api/setup/save', { company: 'X', industry: 'fmcg', clerks: [{ name: 'Ana', phone: 'abc' }] })).status, 400);
+
+  const r = (
+    await api('/api/setup/save', {
+      company: 'Frosty Logistics',
+      agentName: 'Sara',
+      industry: 'cold_chain',
+      region: 'AE',
+      clerks: [{ name: 'Rahul', phone: '050 123 4567' }],
+    })
+  ).json;
+  assert.equal(r.settings.dispatchers[0].phone, '+971501234567', 'local UAE number normalised');
+  assert.match(r.settings.businessDescription, /temperature-controlled/, 'description pre-filled from the industry');
+  assert.ok(r.templates.some((t: any) => /reefer temperature/.test(t.text)));
+  g = (await api('/api/setup')).json;
+  assert.ok(g.settings.setupAt);
+  const s = (await api('/api/state')).json;
+  assert.equal(s.industry.label, 'Cold chain (food & pharma)');
+  assert.equal(s.company, 'Frosty Logistics');
+
+  // A driver check-in now asks for the reefer temperature.
+  // Use the server's clock: earlier demo tests moved it.
+  const soon = new Date(Date.parse(s.clock.now) + 10 * 60_000).toISOString();
+  await api('/api/deliveries', {
+    deliveries: [{ id: 'CC-1', material: '40 boxes vaccines', truck: 'DXB-12345', plannedAt: soon, status: 'en_route',
+      client: { name: 'City Hospital', phone: '+971500000001' }, driver: { name: 'Ali', phone: '+971500000002', language: 'en-US' }, site: { name: 'City Hospital pharmacy' } }],
+  });
+  await api('/api/tick', {});
+  const t = (await api('/api/state')).json.threads.find((x: any) => x.phone === '+971500000002');
+  assert.match(t.messages.at(-1).text, /reefer temperature/);
+});

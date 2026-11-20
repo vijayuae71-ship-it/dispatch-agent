@@ -3,6 +3,7 @@
 export type Party = 'client' | 'driver' | 'dispatcher';
 
 export type DeliveryStatus =
+  | 'requested' // ordered by the customer, no truck assigned yet
   | 'scheduled' // planned, client not yet confirmed
   | 'confirmed' // client confirmed the site is ready
   | 'en_route' // driver on the way, ETA on time
@@ -21,14 +22,22 @@ export interface Contact {
   phone: string;
   /** BCP-47 code, e.g. hi-IN. Optional; the bot follows whatever they write in. */
   language?: string;
+  /** e.g. "Site engineer", "Purchase manager". */
+  role?: string;
 }
 
 export interface Delivery {
   /** Usually the order number. */
   id: string;
+  /** Short number clerks type ("assign 101 …"), for orders taken by the bot. */
+  number?: number;
+  /** Phone of whoever placed the order on WhatsApp. */
+  requestedBy?: string;
   orderNo: string;
   material: string;
   client: Contact;
+  /** More people on the client side (site engineer, purchase manager…). They get status updates and can ask about the delivery. */
+  contacts?: Contact[];
   site: { name: string; area?: string; contact?: string };
   truck: string;
   driver: Contact;
@@ -52,8 +61,11 @@ export interface Delivery {
     lateAlertedAt?: string;
     noReplyAlertedClientAt?: string;
     noReplyAlertedDriverAt?: string;
+    /** Last status the client contacts were told about, so each change is announced once. */
+    notifiedStatus?: string;
+    unassignedAlertedAt?: string;
   };
-  source?: 'sheet' | 'api' | 'demo';
+  source?: 'sheet' | 'api' | 'demo' | 'whatsapp';
   sheetRow?: number;
   updatedAt: string;
 }
@@ -85,11 +97,19 @@ export interface Thread {
 
 export interface Alert {
   id: string;
+  /** Short number clerks use on WhatsApp: "take 12". */
+  number: number;
+  assignedTo?: string;
+  assignedAt?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
   deliveryId?: string;
   severity: 'info' | 'warning' | 'critical';
   text: string;
   at: string;
   resolved?: boolean;
+  /** "needs_truck" alerts close themselves when a truck is assigned. */
+  kind?: 'needs_truck';
 }
 
 /** A voice call placed when someone doesn't answer on WhatsApp. */
