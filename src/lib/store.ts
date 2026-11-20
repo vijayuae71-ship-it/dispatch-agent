@@ -126,14 +126,28 @@ export const listThreads = (limit = 100) => backend.list('threads', 'updatedAt',
 
 // -------------------------------------------------------------------- alerts
 
-export async function addAlert(a: Omit<Alert, 'id' | 'at'>): Promise<Alert> {
-  const alert: Alert = { ...a, id: randomUUID(), at: nowIso() };
+/** Alert numbers count up from 1. One service instance, so a read-then-write counter is safe. */
+async function nextAlertNumber(): Promise<number> {
+  const c = ((await backend.get('meta', 'alertCounter')) as { n: number } | null)?.n || 0;
+  await backend.set('meta', 'alertCounter', { n: c + 1 });
+  return c + 1;
+}
+
+export async function addAlert(a: Omit<Alert, 'id' | 'at' | 'number'>): Promise<Alert> {
+  const alert: Alert = { ...a, id: randomUUID(), number: await nextAlertNumber(), at: nowIso() };
   await backend.set('alerts', alert.id, clean(alert));
   return alert;
 }
-export async function resolveAlert(id: string) {
-  const a = (await backend.get('alerts', id)) as Alert | null;
-  if (a) await backend.set('alerts', id, { ...a, resolved: true });
+export const getAlert = async (id: string) => (await backend.get('alerts', id)) as Alert | null;
+export async function saveAlert(a: Alert) {
+  await backend.set('alerts', a.id, clean(a));
+}
+export async function findAlertByNumber(n: number): Promise<Alert | null> {
+  return (await listAlerts(500)).find((a) => a.number === n) || null;
+}
+export async function resolveAlert(id: string, by?: string) {
+  const a = await getAlert(id);
+  if (a) await saveAlert({ ...a, resolved: true, resolvedBy: by || a.resolvedBy, resolvedAt: nowIso() });
 }
 export const listAlerts = (limit = 100) => backend.list('alerts', 'at', limit) as Promise<Alert[]>;
 

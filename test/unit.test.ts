@@ -100,3 +100,26 @@ test('voice splitter hides the language tag and metadata', () => {
   assert.equal(out, 'नमस्ते जी ');
   assert.match(s.meta, /"action":"end"/);
 });
+
+test('clerk commands are understood in English and Hinglish', async () => {
+  const { parseClerkCommand } = await import('../src/lib/clerks');
+  assert.deepEqual(parseClerkCommand('take 12'), { kind: 'take', n: 12 });
+  assert.deepEqual(parseClerkCommand('Take #12'), { kind: 'take', n: 12 });
+  assert.deepEqual(parseClerkCommand('12 mine'), { kind: 'take', n: 12 });
+  assert.deepEqual(parseClerkCommand('le 7'), { kind: 'take', n: 7 });
+  assert.deepEqual(parseClerkCommand('done 12'), { kind: 'done', n: 12 });
+  assert.deepEqual(parseClerkCommand('12 ho gaya'), { kind: 'done', n: 12 });
+  assert.deepEqual(parseClerkCommand('list'), { kind: 'list' });
+  assert.deepEqual(parseClerkCommand('what is happening?'), { kind: 'help' });
+});
+
+test('sheet "Other Contacts" cell becomes contacts with roles', async () => {
+  const { parseContacts } = await import('../src/lib/sheets');
+  const toPhone = (s: string) => { const p = s.replace(/[\s-]/g, ''); return /^\d{10}$/.test(p) ? `+91${p}` : p; };
+  assert.deepEqual(parseContacts('Sunil (Site engineer) 98765 43210; Meera +919812345678', toPhone), [
+    { name: 'Sunil', phone: '+919876543210', role: 'Site engineer' },
+    { name: 'Meera', phone: '+919812345678' },
+  ]);
+  assert.deepEqual(parseContacts('', toPhone), []);
+  assert.deepEqual(parseContacts('just a name', toPhone), []);
+});

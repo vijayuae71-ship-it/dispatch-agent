@@ -1,12 +1,21 @@
 import { clearAll, saveDelivery } from './store';
+import { config } from './config';
 import { now, setLocalTime } from './clock';
 import type { Delivery } from './types';
 
 // A realistic morning for a Pune building-materials transporter, used by the
 // console's demo mode. Phone numbers are fictional (+91 90000 0000x).
 
+/** Three dispatch clerks for the demo (only if none are configured). */
+export const DEMO_CLERKS = [
+  { name: 'Anita', phone: '+919000000901' },
+  { name: 'Farhan', phone: '+919000000902' },
+  { name: 'Joseph', phone: '+919000000903' },
+];
+
 export async function startDemoDay(): Promise<void> {
   await clearAll();
+  if (!config().dispatchers.length) config().dispatchers = [...DEMO_CLERKS];
   setLocalTime(9, 0);
   const at = (h: number, m = 0) => {
     const t = now();
@@ -20,6 +29,7 @@ export async function startDemoDay(): Promise<void> {
       orderNo: 'ORD-1045',
       material: '30 t M-sand',
       client: { name: 'Deshmukh & Sons', phone: '+919000000105', language: 'mr-IN' },
+      contacts: [{ name: 'Vikas', role: 'Site supervisor', phone: '+919000000115', language: 'hi-IN' }],
       site: { name: 'Hadapsar Greens', area: 'Hadapsar, Pune', contact: 'Vikas 98xxxxxx10' },
       truck: 'MH-12-RT-6604',
       driver: { name: 'Gurpreet Singh', phone: '+919000000205', language: 'pa-IN' },
@@ -50,6 +60,10 @@ export async function startDemoDay(): Promise<void> {
       orderNo: 'ORD-1041',
       material: '600 bags OPC 53 cement',
       client: { name: 'Patil Constructions', phone: '+919000000101', language: 'hi-IN' },
+      contacts: [
+        { name: 'Sunil', role: 'Site engineer', phone: '+919000000111', language: 'hi-IN' },
+        { name: 'Meera', role: 'Purchase manager', phone: '+919000000121', language: 'en-IN' },
+      ],
       site: { name: 'Wakad Residency', area: 'Wakad, Pune' },
       truck: 'MH-12-PQ-4821',
       driver: { name: 'Ramesh Yadav', phone: '+919000000201', language: 'hi-IN' },

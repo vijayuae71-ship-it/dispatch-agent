@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'crypto';
 import { config } from './lib/config';
 import { advanceClock, fmtTime, fmtDateTime, now } from './lib/clock';
 import { demoCallTurn, endCall, handleInbound, tick } from './lib/engine';
+import { assignAlert, closeAlert } from './lib/clerks';
 import { isDemo } from './lib/outbox';
 import { startDemoDay } from './lib/demo';
 import { sheetConfigured, syncSheet } from './lib/sheets';
@@ -113,6 +114,7 @@ export async function state(): Promise<Res> {
     company: config().company,
     agentName: config().agentName,
     languages: config().languages.map((l) => ({ code: l.code, name: l.name })),
+    clerks: config().dispatchers,
     sheet: sheetConfigured(),
     clock: { now: now().toISOString(), time: fmtTime(now().toISOString()), label: fmtDateTime(now().toISOString()) },
     deliveries: deliveries.sort((a, b) => a.plannedAt.localeCompare(b.plannedAt)),
@@ -129,7 +131,9 @@ export async function upsertDeliveries(req: Req): Promise<Res> {
   const results: { id: string; ok: boolean; error?: string }[] = [];
   for (const x of list) {
     const id = String(x.id || x.orderNo || '');
+    const badContact = (x.contacts || []).some((c) => !c?.phone || !isE164(c.phone));
     const problems = [
+      badContact && 'contacts[].phone (E.164)',
       !id && 'id or orderNo',
       !x.client?.phone || !isE164(x.client.phone) ? 'client.phone (E.164)' : '',
       !x.driver?.phone || !isE164(x.driver.phone) ? 'driver.phone (E.164)' : '',
@@ -157,10 +161,25 @@ export async function upsertDeliveries(req: Req): Promise<Res> {
   return json(200, { results });
 }
 
+/** { id, clerk? }: close an alert from the console. */
 export async function resolve(req: Req): Promise<Res> {
   if (!req.json?.id) return json(400, { error: 'id is required' });
-  await resolveAlert(String(req.json.id));
-  return json(200, { ok: true });
+  const clerk = String(req.json.clerk || '').trim();
+  if (!clerk) {
+    await resolveAlert(String(req.json.id));
+    return json(200, { ok: true });
+  }
+  const r = await closeAlert(String(req.json.id), clerk);
+  return json(r.ok ? 200 : 409, r);
+}
+
+/** { id, clerk }: a clerk takes an alert from the console. */
+export async function assign(req: Req): Promise<Res> {
+  const id = String(req.json?.id || '');
+  const clerk = String(req.json?.clerk || '').trim();
+  if (!id || !clerk) return json(400, { error: 'id and clerk are required' });
+  const r = await assignAlert(id, clerk);
+  return json(r.ok ? 200 : 409, r);
 }
 
 export async function runTick(): Promise<Res> {

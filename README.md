@@ -5,7 +5,8 @@ An AI dispatcher for Indian logistics. It takes over the routine calls that disp
 - **Clients** get a WhatsApp message before their delivery, asking them to confirm the site is ready and share the gate contact. They can ask about their truck at any time.
 - **Drivers** get a short check-in when their ETA is due or missed, never on a fixed schedule. "Traffic hai, 45 min lagega" updates the ETA; "tyre puncture" raises a critical alert.
 - **No reply after 20 minutes?** The bot calls them: a natural voice in their language that can be interrupted, through Twilio ConversationRelay, as a normal call or a WhatsApp call.
-- **Dispatchers** see one live board and get WhatsApp alerts only for real problems: breakdowns, unreachable drivers, unconfirmed sites, trucks running late.
+- **Dispatch clerks** see one live board. Every alert goes to **all clerks on WhatsApp**, numbered: a clerk replies `take 12` to own it (the others are told, so nobody doubles up), `done 12` to close it, and `list` for what's open. The same Take and Close buttons are on the console.
+- **Several people per client** (site engineer, purchase manager…) can ask about their deliveries, and all of them get a WhatsApp update when a truck is delayed, arrives, or is delivered: the job the WhatsApp group used to do.
 - **Languages:** Hindi and Hinglish, English, Marathi, Tamil, Telugu, Kannada, Bengali, Punjabi, Gujarati and Malayalam. The bot replies the way the person writes, including Roman-script Hinglish.
 - **Order feed:** a Google Sheet the dispatcher already knows, or a JSON API for a transport-management system. Statuses are written back to the sheet.
 
@@ -70,6 +71,8 @@ Alerts the AI raises are de-duplicated: a repeat for the same delivery within 30
    | `TEMPLATE_DRIVER_ETA_EN` | Hello {{1}}, {{2}} dispatch here. Order {{3}} to {{4}}, truck {{5}}: where are you now and what time will you reach? Please reply when safely stopped. |
    | `TEMPLATE_DRIVER_ETA_HI` | Namaste {{1}}, {{2}} dispatch se. Order {{3}}, {{4}} ke liye, truck {{5}}: abhi aap kahan ho aur kitne baje pahunchoge? Gaadi rok kar reply karein. |
    | `TEMPLATE_DISPATCHER_ALERT_EN` | ⚠️ {{1}} |
+   | `TEMPLATE_CLIENT_UPDATE_EN` | Update on order {{1}} to {{2}}: {{3}}. |
+   | `TEMPLATE_CLIENT_UPDATE_HI` | Order {{1}} ({{2}}) update: {{3}}. |
 
    Within 24 hours of someone's last message, the same texts go out as normal messages, so no template is needed then.
 3. **Calls (optional).**
@@ -77,7 +80,7 @@ Alerts the AI raises are de-duplicated: a repeat for the same delivery within 30
    - **Normal calls:** set `TWILIO_VOICE_FROM`.
    - **No calls:** set `CALLS_ENABLED=false`, and the bot alerts the dispatcher instead of calling.
 4. **Order feed.** Create a sheet with a tab named `Deliveries` and these columns (any order):
-   - **Input:** `Order`, `Material`, `Client`, `Client Phone`, `Client Language`, `Site`, `Site Area`, `Truck`, `Driver`, `Driver Phone`, `Driver Language`, `Planned` (e.g. `2026-11-20 14:30` or `20/11/2026 2:30 PM`), `Notes`
+   - **Input:** `Order`, `Material`, `Client`, `Client Phone`, `Client Language`, `Other Contacts` (e.g. `Sunil (Site engineer) 98765 43210; Meera 98123 45678`), `Site`, `Site Area`, `Truck`, `Driver`, `Driver Phone`, `Driver Language`, `Planned` (e.g. `2026-11-20 14:30` or `20/11/2026 2:30 PM`), `Notes`
    - **Written by the bot:** `Status`, `ETA`, `Location`, `Last Update`, `Issue`, `Site Contact`
 
    Share the sheet with the service account (`dispatch-agent@<project>.iam.gserviceaccount.com`, Editor) and set `SHEET_ID`. Typing a status like `delivered` in the sheet overrides the bot. Ten-digit numbers are treated as Indian (+91).
@@ -108,7 +111,8 @@ All `/api/*` endpoints need the header `x-admin-key: $ADMIN_KEY`.
 ```
 GET  /api/state                 board: deliveries, alerts, chats, calls, clock
 POST /api/deliveries            { deliveries: [{ id, material, truck, plannedAt (ISO), client: {name, phone, language?}, driver: {…}, site: {name, area?, contact?} }] }
-POST /api/alerts/resolve        { id }
+POST /api/alerts/assign         { id, clerk }
+POST /api/alerts/resolve        { id, clerk? }
 POST /api/tick                  run the rules now
 POST /api/sync                  sync the Google Sheet now
 POST /api/demo/start | advance { minutes } | message { phone, text } | call { callId, speech | hangup }   (demo mode only)
@@ -118,7 +122,7 @@ POST /api/demo/start | advance { minutes } | message { phone, text } | call { ca
 
 ```bash
 npm run typecheck
-npm test     # 16 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
+npm test     # 20 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
 ```
 
 | Path | What |

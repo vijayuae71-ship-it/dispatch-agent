@@ -88,7 +88,13 @@
   .alert.warning { border-color: var(--warn); }
   .alert.resolved { opacity: .5; }
   .alert .t { color: var(--muted); font-size: 11px; white-space: nowrap; }
-  .alert .x { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+  .alert .x { padding: 1px 8px; font-size: 12px; }
+  .alert .body { flex: 1; min-width: 0; }
+  .alert .acts { display: flex; gap: 4px; flex-shrink: 0; }
+  .alert .num { font-weight: 700; margin-right: 4px; }
+  .owner { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; border-radius: 99px; padding: 0 8px; background: var(--card); border: 1px solid var(--line); }
+  .whoami { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .whoami select { font-size: 12px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); }
   .contacts { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
   .contact { white-space: nowrap; border-radius: 99px; padding: 5px 12px; font-size: 13px; position: relative; }
   .contact[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -173,7 +179,8 @@
       </section>
       <div data-pane="side" style="display:flex;flex-direction:column;gap:14px">
         <section class="card">
-          <h2>Dispatcher alerts <span class="count" id="aCount"></span></h2>
+          <h2>Dispatcher alerts <span class="count" id="aCount"></span>
+            <label class="whoami">You are <select id="whoami" aria-label="Which clerk are you"></select></label></h2>
           <div id="alerts" class="alerts"></div>
         </section>
         <section class="card">
@@ -228,7 +235,9 @@
     for (const d of S.deliveries) {
       if (!map.has(d.client.phone)) map.set(d.client.phone, { phone: d.client.phone, name: d.client.name, party: 'client', sub: `Client · ${d.site.name}` });
       if (!map.has(d.driver.phone)) map.set(d.driver.phone, { phone: d.driver.phone, name: d.driver.name, party: 'driver', sub: `Driver · ${d.truck}` });
+      for (const c of d.contacts || []) if (!map.has(c.phone)) map.set(c.phone, { phone: c.phone, name: c.name, party: 'client', sub: `${c.role || 'Contact'} · ${d.client.name}` });
     }
+    for (const c of S.clerks || []) if (!map.has(c.phone)) map.set(c.phone, { phone: c.phone, name: c.name, party: 'dispatcher', sub: 'Dispatch clerk' });
     for (const t of S.threads) if (!map.has(t.phone)) map.set(t.phone, { phone: t.phone, name: t.name || t.phone, party: t.party, sub: t.party });
     const last = (p) => (S.threads.find((t) => t.phone === p)?.updatedAt) || '';
     return [...map.values()].sort((a, b) => last(b.phone).localeCompare(last(a.phone)));
@@ -256,6 +265,11 @@
     }
     const ringing = S.calls.find((c) => c.status === 'ringing');
     const unanswered = S.threads.find((t) => t.messages.length && t.messages[t.messages.length - 1].direction === 'out' && t.messages[t.messages.length - 1].channel === 'whatsapp');
+    const freshAlert = S.alerts.find((x) => !x.resolved && !x.assignedTo);
+    if (freshAlert && (S.clerks || []).length && !ringing) {
+      g.append(el('b', { textContent: 'Clerks: ' }), `alert #${freshAlert.number} went to all ${S.clerks.length} clerks on WhatsApp. Open 🎧 ${S.clerks[0].name}'s chat and reply "take ${freshAlert.number}" (the others are told), or press Take on the alert.`);
+      return;
+    }
     if (ringing) g.append(el('b', { textContent: 'Escalation call: ' }), `the bot is calling ${ringing.phone === selected ? 'this contact' : nameOf(ringing.phone)} because WhatsApp got no reply. Open their chat and press Answer to talk to it (type what you'd say).`);
     else if (unanswered) g.append(el('b', { textContent: 'Try it: ' }), `the bot messaged ${nameOf(unanswered.phone)}. Open their chat and reply as them, in any language: e.g. "haan site ready hai", "traffic hai, 45 min lagega", "truck ka tyre puncture ho gaya". Or ignore it and add +30 min to see the bot call them.`);
     else g.append(el('b', { textContent: 'Next: ' }), 'move the clock forward. The bot asks clients to confirm 2 hours before delivery and checks on drivers when an ETA is due or missed.');
@@ -291,6 +305,7 @@
           d.eta && d.eta !== d.plannedAt ? el('span', { className: lateMin >= 20 ? 'late' : '', textContent: `ETA ${fmt(d.eta)}${lateMin > 0 ? ` (+${lateMin} min)` : ''}` }) : null,
           d.lastLocation ? el('span', { textContent: `📍 ${d.lastLocation}` }) : null,
           d.site.contact ? el('span', { textContent: `☎ Site: ${d.site.contact}` }) : null,
+          (d.contacts || []).length ? el('span', { textContent: `👥 ${d.contacts.map((c) => c.role ? `${c.name} (${c.role})` : c.name).join(', ')}` }) : null,
           d.rescheduledTo ? el('span', { className: 'late', textContent: `Asked for ${fmt(d.rescheduledTo)}` }) : null),
         d.issue ? el('div', { className: 'row issue', textContent: `⚠ ${d.issue}` }) : null,
         el('div', { className: 'row' },
@@ -307,16 +322,51 @@
     return b;
   }
 
+  // Which clerk is using this console (remembered on this device).
+  const me = { get() { try { return localStorage.getItem('dispatch_clerk') || ''; } catch { return ''; } }, set(v) { try { localStorage.setItem('dispatch_clerk', v); } catch {} } };
+  function renderWhoami() {
+    const sel = $('whoami');
+    const names = (S.clerks || []).map((c) => c.name);
+    const cur = me.get();
+    const opts = [el('option', { value: '', textContent: names.length ? 'choose…' : 'Dispatcher' }), ...names.map((n) => el('option', { value: n, textContent: n, selected: n === cur }))];
+    if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i].value)) sel.replaceChildren(...opts);
+    sel.value = names.includes(cur) ? cur : '';
+  }
+  $('whoami').addEventListener('change', (e) => { me.set(e.target.value); render(); });
+
+  async function alertAction(path, a) {
+    const clerk = me.get() || ((S.clerks || []).length ? '' : 'Dispatcher');
+    if (!clerk) { alert('Choose who you are first ("You are" above the alerts).'); return; }
+    try { await api(path, { id: a.id, clerk }); }
+    catch (e) { alert(e.message); }
+    refresh();
+  }
+
   function renderAlerts() {
+    renderWhoami();
     const open = S.alerts.filter((a) => !a.resolved);
     $('aCount').textContent = open.length;
-    if (!S.alerts.length) return $('alerts').replaceChildren(el('div', { className: 'empty', style: 'padding:10px', textContent: 'No alerts. The bot raises one when a human is needed.' }));
+    if (!S.alerts.length) return $('alerts').replaceChildren(el('div', { className: 'empty', style: 'padding:10px', textContent: 'No alerts. The bot raises one when a human is needed, and sends it to every clerk on WhatsApp.' }));
     const sorted = [...S.alerts].sort((a, b) => (a.resolved === b.resolved ? b.at.localeCompare(a.at) : a.resolved ? 1 : -1));
     $('alerts').replaceChildren(...sorted.map((a) => {
-      const x = el('button', { className: 'x', textContent: a.resolved ? 'Done' : 'Resolve', disabled: !!a.resolved, type: 'button' });
-      x.addEventListener('click', async () => { await api('/api/alerts/resolve', { id: a.id }); refresh(); });
+      const acts = el('div', { className: 'acts' });
+      if (!a.resolved && !a.assignedTo) {
+        const take = el('button', { className: 'x', textContent: 'Take', type: 'button' });
+        take.addEventListener('click', () => alertAction('/api/alerts/assign', a));
+        acts.append(take);
+      }
+      if (!a.resolved) {
+        const close = el('button', { className: 'x', textContent: 'Close', type: 'button' });
+        close.addEventListener('click', () => alertAction('/api/alerts/resolve', a));
+        acts.append(close);
+      }
+      const owner = a.resolved
+        ? el('span', { className: 'owner', textContent: `✅ Closed${a.resolvedBy ? ` by ${a.resolvedBy}` : ''}` })
+        : a.assignedTo ? el('span', { className: 'owner', textContent: `✋ ${a.assignedTo}` }) : null;
       return el('div', { className: `alert ${a.severity}${a.resolved ? ' resolved' : ''}` },
-        el('span', { className: 't', textContent: fmt(a.at) }), el('span', { textContent: a.text }), x);
+        el('span', { className: 't', textContent: fmt(a.at) }),
+        el('div', { className: 'body' }, el('span', { className: 'num', textContent: a.number ? `#${a.number}` : '' }), el('span', { textContent: a.text }), owner ? el('div', {}, owner) : null),
+        acts);
     }));
   }
 
@@ -324,7 +374,7 @@
     const cs = contacts();
     if (!selected && cs.length) selected = cs[0].phone;
     $('contacts').replaceChildren(...cs.map((c) => {
-      const b = el('button', { className: 'contact', type: 'button', textContent: `${c.party === 'driver' ? '🚚' : c.party === 'client' ? '🏗' : '👤'} ${c.name}` });
+      const b = el('button', { className: 'contact', type: 'button', textContent: `${c.party === 'driver' ? '🚚' : c.party === 'client' ? '🏗' : c.party === 'dispatcher' ? '🎧' : '👤'} ${c.name}` });
       b.setAttribute('aria-pressed', String(c.phone === selected));
       if (activeCall(c.phone)) b.append(el('span', { className: 'dot', title: 'Call' }));
       b.addEventListener('click', () => { selected = c.phone; render(); });

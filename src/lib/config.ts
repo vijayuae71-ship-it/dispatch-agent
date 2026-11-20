@@ -76,10 +76,14 @@ export function loadConfig(path = process.env.CONFIG_FILE || 'config/dispatch.js
   cfg.rules.noReplyMin = num('NO_REPLY_MIN') ?? cfg.rules.noReplyMin;
   if (process.env.COMPANY_NAME) cfg.company = process.env.COMPANY_NAME;
   if (process.env.DISPATCHER_NUMBERS) {
+    // "Anita:+919800000001, Farhan:+919800000002" (names optional)
     cfg.dispatchers = process.env.DISPATCHER_NUMBERS.split(/[,;]/)
       .map((p) => p.trim())
       .filter(Boolean)
-      .map((phone, i) => ({ name: `Dispatcher ${i + 1}`, phone }));
+      .map((entry, i) => {
+        const m = entry.match(/^(.+?)\s*:\s*(\+?\d[\d\s]+)$/);
+        return m ? { name: m[1].trim(), phone: m[2].replace(/\s/g, '') } : { name: `Clerk ${i + 1}`, phone: entry };
+      });
   }
   if (process.env.CALLS_ENABLED) cfg.callsEnabled = process.env.CALLS_ENABLED === 'true';
   if (process.env.SHARE_DRIVER_PHONE) cfg.shareDriverPhone = process.env.SHARE_DRIVER_PHONE === 'true';

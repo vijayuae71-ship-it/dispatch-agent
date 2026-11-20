@@ -1,7 +1,7 @@
 import { parseLocal, fmtDateTime } from './clock';
 import { getDelivery, listDeliveries, saveDelivery } from './store';
 import { config } from './config';
-import type { Delivery, DeliveryStatus } from './types';
+import type { Contact, Delivery, DeliveryStatus } from './types';
 
 // Google Sheets as the order feed: one row per delivery. The dispatcher (or
 // their ERP export) fills in the left-hand columns; the bot fills in Status,
@@ -14,7 +14,7 @@ const SHEET_ID = () => process.env.SHEET_ID || '';
 const TAB = () => process.env.SHEET_TAB || 'Deliveries';
 
 export const SHEET_COLUMNS = {
-  input: ['Order', 'Material', 'Client', 'Client Phone', 'Client Language', 'Site', 'Site Area', 'Truck', 'Driver', 'Driver Phone', 'Driver Language', 'Planned', 'Notes'],
+  input: ['Order', 'Material', 'Client', 'Client Phone', 'Client Language', 'Other Contacts', 'Site', 'Site Area', 'Truck', 'Driver', 'Driver Phone', 'Driver Language', 'Planned', 'Notes'],
   output: ['Status', 'ETA', 'Location', 'Last Update', 'Issue', 'Site Contact'],
   required: ['Order', 'Client', 'Client Phone', 'Site', 'Truck', 'Driver', 'Driver Phone', 'Planned'],
 };
@@ -53,6 +53,25 @@ export function colLetter(i: number): string {
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
+/**
+ * "Sunil (Site engineer) 98765 43210; Anil +919812345678" → contacts.
+ * Separate people with ";" or a new line; a role in brackets is optional.
+ */
+export function parseContacts(cell: string, toPhone: (s: string) => string): Contact[] {
+  return cell
+    .split(/[;\n]/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => {
+      const m = p.match(/^(.*?)(\+?[\d][\d\s-]{8,})$/);
+      if (!m) return null;
+      const role = m[1].match(/\(([^)]+)\)/)?.[1]?.trim();
+      const name = m[1].replace(/\([^)]*\)/, '').replace(/[,:-]\s*$/, '').trim() || 'Contact';
+      return { name, phone: toPhone(m[2]), ...(role ? { role } : {}) };
+    })
+    .filter((c): c is Contact => !!c && /^\+\d{8,15}$/.test(c.phone));
+}
+
 /** Turn sheet rows into deliveries. Pure: used by sync and by tests. */
 export function rowsToDeliveries(rows: string[][]): { header: Record<string, number>; items: { row: number; d: Partial<Delivery> & { id: string }; sheetStatus?: string }[]; errors: string[] } {
   const header: Record<string, number> = {};
@@ -82,6 +101,7 @@ export function rowsToDeliveries(rows: string[][]): { header: Record<string, num
         orderNo: order,
         material: get(r, 'Material') || 'Material',
         client: { name: get(r, 'Client'), phone: phone(get(r, 'Client Phone')), language: get(r, 'Client Language') || undefined },
+        contacts: parseContacts(get(r, 'Other Contacts'), phone),
         site: { name: get(r, 'Site'), area: get(r, 'Site Area') || undefined, contact: get(r, 'Site Contact') || undefined },
         truck: get(r, 'Truck'),
         driver: { name: get(r, 'Driver'), phone: phone(get(r, 'Driver Phone')), language: get(r, 'Driver Language') || undefined },
@@ -120,7 +140,7 @@ export async function syncSheet(): Promise<{ imported: number; updated: number; 
     } else {
       // Dispatcher edits in the sheet win for the input columns…
       const before = JSON.stringify([d.client, d.driver, d.truck, d.plannedAt, d.material, d.site.name]);
-      Object.assign(d, { orderNo: incoming.orderNo, material: incoming.material, truck: incoming.truck, plannedAt: incoming.plannedAt, notes: incoming.notes, sheetRow: row });
+      Object.assign(d, { orderNo: incoming.orderNo, material: incoming.material, truck: incoming.truck, plannedAt: incoming.plannedAt, notes: incoming.notes, contacts: incoming.contacts, sheetRow: row });
       d.client = { ...d.client, ...incoming.client };
       d.driver = { ...d.driver, ...incoming.driver };
       d.site = { ...d.site, name: incoming.site!.name, area: incoming.site!.area, contact: incoming.site!.contact || d.site.contact };

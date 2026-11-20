@@ -11,7 +11,7 @@ import type { Delivery } from './types';
 // get it approved, and put its Content SID in the env var named in `envKey`.
 // Inside the 24h window, the same text is sent as a normal message.
 
-export type TemplateName = 'client_confirm' | 'driver_eta' | 'dispatcher_alert';
+export type TemplateName = 'client_confirm' | 'driver_eta' | 'dispatcher_alert' | 'client_update';
 type Lang = 'en' | 'hi';
 
 const TEXT: Record<TemplateName, Record<Lang, string>> = {
@@ -27,7 +27,20 @@ const TEXT: Record<TemplateName, Record<Lang, string>> = {
     en: '⚠️ {{1}}',
     hi: '⚠️ {{1}}',
   },
+  client_update: {
+    en: 'Update on order {{1}} to {{2}}: {{3}}.',
+    hi: 'Order {{1}} ({{2}}) update: {{3}}.',
+  },
 };
+
+/** The status sentence that goes into client_update, in the contact's language. */
+export function statusPhrase(status: 'delayed' | 'arrived' | 'delivered', d: Delivery, language?: string): string {
+  const hi = langOf(language) === 'hi';
+  if (status === 'delayed')
+    return hi ? `truck ${d.truck} thoda late hai, ab lagbhag ${fmtTime(d.eta)} tak pahunchega` : `truck ${d.truck} is running late, now expected around ${fmtTime(d.eta)}`;
+  if (status === 'arrived') return hi ? `truck ${d.truck} site par pahunch gaya hai` : `truck ${d.truck} has reached the site`;
+  return hi ? 'delivery poori ho gayi hai, dhanyavaad' : 'delivery completed, thank you';
+}
 
 function langOf(code?: string): Lang {
   return (code || config().defaultLanguage).toLowerCase().startsWith('hi') ? 'hi' : 'en';
@@ -36,6 +49,7 @@ function langOf(code?: string): Lang {
 export function templateVars(name: TemplateName, d: Delivery | null, extra?: string): string[] {
   const c = config();
   if (name === 'dispatcher_alert') return [extra || ''];
+  if (name === 'client_update') return d ? [d.orderNo, d.site.name, extra || ''] : [];
   if (!d) return [];
   if (name === 'client_confirm') return [d.client.name, c.company, d.orderNo, d.material, d.site.name, fmtTime(d.plannedAt), d.truck];
   return [d.driver.name, c.company, d.orderNo, d.site.name, d.truck];

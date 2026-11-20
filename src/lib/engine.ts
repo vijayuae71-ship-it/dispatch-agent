@@ -4,7 +4,8 @@ import { minutesBetween, now, nowIso } from './clock';
 import { decide, type Action } from './rules';
 import { replyToMessage, runVoiceTurn, type VoiceTurn } from './agent';
 import { isDemo, ring, sendTemplate, sendText } from './outbox';
-import { templateVars } from './templates';
+import { statusPhrase, templateVars } from './templates';
+import { handleClerkMessage, notifyClerks } from './clerks';
 import {
   addAlert,
   listAlerts,
@@ -44,8 +45,13 @@ export async function identify(phone: string): Promise<{ party: Party | 'unknown
   const all = (await listDeliveries()).filter(isActive);
   const asDriver = all.filter((d) => samePhone(d.driver.phone, phone));
   if (asDriver.length) return { party: 'driver', name: asDriver[0].driver.name, language: asDriver[0].driver.language, deliveries: asDriver };
-  const asClient = all.filter((d) => samePhone(d.client.phone, phone));
-  if (asClient.length) return { party: 'client', name: asClient[0].client.name, language: asClient[0].client.language, deliveries: asClient };
+  const asClient = all.filter((d) => samePhone(d.client.phone, phone) || (d.contacts || []).some((c) => samePhone(c.phone, phone)));
+  if (asClient.length) {
+    const d = asClient[0];
+    const c = samePhone(d.client.phone, phone) ? d.client : (d.contacts || []).find((x) => samePhone(x.phone, phone))!;
+    const name = c === d.client ? c.name : `${c.name}${c.role ? ` (${c.role})` : ''}, ${d.client.name}`;
+    return { party: 'client', name, language: c.language, deliveries: asClient };
+  }
   const disp = config().dispatchers.find((x) => samePhone(x.phone, phone));
   if (disp) return { party: 'dispatcher', name: disp.name, deliveries: [] };
   return { party: 'unknown', deliveries: [] };
@@ -75,20 +81,41 @@ async function isDuplicate(a: AgentAlert): Promise<boolean> {
 export async function raiseAlert(a: AgentAlert, opts: { dedupe?: boolean } = {}) {
   if (opts.dedupe && (await isDuplicate(a))) return null;
   const alert = await addAlert({ deliveryId: a.deliveryId || undefined, severity: a.severity, text: a.text });
-  // Tell dispatchers on WhatsApp for anything that isn't routine.
-  if (a.severity !== 'info') {
-    for (const disp of config().dispatchers) {
-      await sendTemplate(disp.phone, 'dispatcher_alert', templateVars('dispatcher_alert', null, a.text), { party: 'dispatcher', name: disp.name, language: 'en' });
-    }
-  }
+  // Every alert goes to every clerk on WhatsApp; one of them takes it.
+  await notifyClerks(alert);
   return alert;
 }
 
 // ---------------------------------------------------------- applying updates
 
+/** Everyone on the client side of a delivery: the main contact plus site engineers, purchase managers… */
+export function clientContacts(d: Delivery) {
+  return [d.client, ...(d.contacts || [])].filter((c, i, all) => c.phone && all.findIndex((x) => samePhone(x.phone, c.phone)) === i);
+}
+
+const ANNOUNCED = ['delayed', 'arrived', 'delivered'] as const;
+
+/** Tell every client contact when a truck runs late, arrives or is delivered: what the WhatsApp group used to do. */
+async function announceStatus(d: Delivery) {
+  const status = d.status as (typeof ANNOUNCED)[number];
+  if (!ANNOUNCED.includes(status) || d.flags.notifiedStatus === status) return;
+  d.flags.notifiedStatus = status;
+  await saveDelivery(d);
+  for (const c of clientContacts(d)) {
+    const phrase = statusPhrase(status, d, c.language);
+    await sendTemplate(c.phone, 'client_update', templateVars('client_update', d, phrase), {
+      party: 'client',
+      name: c === d.client ? c.name : `${c.name}${c.role ? ` (${c.role})` : ''}, ${d.client.name}`,
+      language: c.language,
+      deliveryIds: [d.id],
+    });
+  }
+}
+
 /** Apply what the AI learned to the delivery records. Returns a short log of changes. */
 export async function applyUpdates(updates: DeliveryUpdate[], party: Party | 'unknown'): Promise<string[]> {
   const log: string[] = [];
+  const toAnnounce: string[] = [];
   for (const u of updates) {
     await withLock(async () => {
       const d = await getDelivery(u.deliveryId);
@@ -111,10 +138,17 @@ export async function applyUpdates(updates: DeliveryUpdate[], party: Party | 'un
         status = minutesBetween(d.plannedAt, d.eta) >= config().rules.lateThresholdMin / 2 ? 'delayed' : 'en_route';
       }
       if (u.issue) status = 'issue';
-      if (status !== d.status) log.push(`${d.orderNo}: ${d.status} → ${status}`);
+      if (status !== d.status) {
+        log.push(`${d.orderNo}: ${d.status} → ${status}`);
+        toAnnounce.push(d.id);
+      }
       d.status = status;
       await saveDelivery(d);
     });
+  }
+  for (const id of toAnnounce) {
+    const d = await getDelivery(id);
+    if (d) await announceStatus(d);
   }
   return log;
 }
@@ -128,7 +162,8 @@ export async function handleInbound(phone: string, text: string, opts: { hasMedi
   await appendMessage(phone, { party: who.party, direction: 'in', channel: 'whatsapp', text: body, deliveryIds: who.deliveries.map((d) => d.id) }, { name: who.name, party: who.party });
 
   if (who.party === 'dispatcher') {
-    return { reply: '', party: who.party, changes: [] }; // dispatchers use the console; nothing to automate
+    const reply = await handleClerkMessage(phone, who.name || 'Clerk', body);
+    return { reply, party: who.party, changes: [] };
   }
   if (opts.hasMedia && !text.trim()) {
     // Voice notes aren't transcribed yet: ask for text, and flag it.

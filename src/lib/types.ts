@@ -21,6 +21,8 @@ export interface Contact {
   phone: string;
   /** BCP-47 code, e.g. hi-IN. Optional; the bot follows whatever they write in. */
   language?: string;
+  /** e.g. "Site engineer", "Purchase manager". */
+  role?: string;
 }
 
 export interface Delivery {
@@ -29,6 +31,8 @@ export interface Delivery {
   orderNo: string;
   material: string;
   client: Contact;
+  /** More people on the client side (site engineer, purchase manager…). They get status updates and can ask about the delivery. */
+  contacts?: Contact[];
   site: { name: string; area?: string; contact?: string };
   truck: string;
   driver: Contact;
@@ -52,6 +56,8 @@ export interface Delivery {
     lateAlertedAt?: string;
     noReplyAlertedClientAt?: string;
     noReplyAlertedDriverAt?: string;
+    /** Last status the client contacts were told about, so each change is announced once. */
+    notifiedStatus?: string;
   };
   source?: 'sheet' | 'api' | 'demo';
   sheetRow?: number;
@@ -85,6 +91,12 @@ export interface Thread {
 
 export interface Alert {
   id: string;
+  /** Short number clerks use on WhatsApp: "take 12". */
+  number: number;
+  assignedTo?: string;
+  assignedAt?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
   deliveryId?: string;
   severity: 'info' | 'warning' | 'critical';
   text: string;

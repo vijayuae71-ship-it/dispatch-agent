@@ -44,7 +44,7 @@ if [ "$MODE" = live ]; then
   ask WHATSAPP_CALLS "Escalation calls via WhatsApp calling? (true/false)" "false"
   TWILIO_VOICE_FROM=""
   [ "$WHATSAPP_CALLS" = true ] || ask TWILIO_VOICE_FROM "Phone number for escalation calls (Enter to disable calls)" ""
-  ask DISPATCHERS "Dispatcher WhatsApp numbers for alerts, comma-separated" ""
+  ask DISPATCHERS "Clerks for WhatsApp alerts, e.g. Anita:+9198xxxxxxxx, Farhan:+9198xxxxxxxx" ""
   ask SHEET_ID "Google Sheet ID for orders (Enter to skip)" ""
   [[ "$TWILIO_ACCOUNT_SID" == AC* ]] || { echo "The Account SID should start with AC." >&2; exit 1; }
   e164 "$TWILIO_WHATSAPP_FROM" || { echo "The WhatsApp sender must look like +919812345678." >&2; exit 1; }
