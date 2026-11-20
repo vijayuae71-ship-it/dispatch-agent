@@ -43,6 +43,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   button, input, select { font: inherit; color: inherit; }
+  select { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color-scheme: light dark; max-width: 100%; }
   button { cursor: pointer; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 7px 12px; }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
   button:disabled { opacity: .5; cursor: default; }
@@ -334,7 +335,7 @@
     if (S.mode !== 'demo') { g.innerHTML = ''; g.append(el('span', { textContent: 'Live mode: messages and calls go to real phones through Twilio. Rules run every minute.' })); return; }
     g.replaceChildren();
     if (!S.deliveries.length) {
-      g.append(el('b', { textContent: 'Demo: ' }), 'pick an industry and press "Start demo day" to load a morning with 5 trucks. Then move the clock and reply as customers, drivers and clerks on the right.', S.setupAt ? '' : ' Tip: ⚙ Setup tailors every message to your own industry and region.');
+      g.append(el('b', { textContent: 'Demo: ' }), 'pick an industry and press "Start demo day" to load a morning with 5 trucks. Then move the clock and reply as customers, drivers and clerks in "WhatsApp & calls".', S.setupAt ? '' : ' Tip: ⚙ Setup tailors every message to your own industry and region.');
       return;
     }
     const ringing = S.calls.find((c) => c.status === 'ringing');
