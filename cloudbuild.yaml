@@ -1,0 +1,29 @@
+# Auto-deploy: a Cloud Build trigger runs this on every push to main.
+# Builds the Docker image, pushes it to Artifact Registry, and rolls the
+# existing Cloud Run service onto it. Only the image changes: the service's
+# settings (mode, secrets, region, scaling) stay exactly as they are.
+substitutions:
+  _SERVICE: dispatch-agent
+  _REGION: us-east4
+  _REPO: cloud-run-source-deploy
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA', '.']
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA']
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: ['run', 'deploy', '${_SERVICE}', '--image', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA', '--region', '${_REGION}', '--quiet']
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA'
+
+options:
+  # Required when the trigger runs as a chosen service account.
+  logging: CLOUD_LOGGING_ONLY
