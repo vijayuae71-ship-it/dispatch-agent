@@ -131,6 +131,21 @@ bash deploy.sh
 
 The service runs as **one instance** (`--max-instances=1`), because the rules engine runs inside it. That comfortably handles hundreds of deliveries a day. Region `us-east4` gives the shortest pauses on calls; `asia-south1` keeps data in India.
 
+## Auto-deploy on merge
+
+`cloudbuild.yaml` builds the image and rolls the `dispatch-agent` Cloud Run service onto it, changing only the image (mode, secrets and scaling stay as they are). Connect it once with a Cloud Build trigger:
+
+1. **Cloud Build → Triggers → Create trigger**
+   - Name: `dispatch-agent-main`, region: `global`
+   - Event: **Push to a branch**
+   - Source: connect the GitHub repo `dispatch-agent` (Cloud Build GitHub App; install it on this repo only); branch `^main$`
+   - Configuration: **Cloud Build configuration file**, location `/cloudbuild.yaml`
+   - Service account: `<project-number>-compute@developer.gserviceaccount.com`
+2. **IAM:** give that service account **Cloud Run Admin**, **Service Account User**, **Artifact Registry Writer** and **Logs Writer**.
+3. Run the trigger once on `main`. After that, every merge deploys in about 5 minutes; progress is under **Cloud Build → History**.
+
+If you deploy to another region or service name, change `_REGION` / `_SERVICE` in `cloudbuild.yaml` or override them on the trigger.
+
 ## API
 
 All `/api/*` endpoints need the header `x-admin-key: $ADMIN_KEY`.
