@@ -30,7 +30,10 @@ function deliveryBrief(d: Delivery, party: Party | 'unknown'): string {
     `  Planned arrival: ${fmtDateTime(d.plannedAt)}; current ETA: ${d.eta ? fmtDateTime(d.eta) : 'same as planned'}`,
     `  Truck ${d.truck}; status: ${d.status}${d.lastLocation ? `; last known location: ${d.lastLocation}` : ''}`,
   ];
-  if (party !== 'driver') lines.push(`  Driver: ${d.driver.name}`);
+  if (party !== 'driver') {
+    // Only the delivery's own client gets the driver's number, never an unknown caller.
+    lines.push(`  Driver: ${d.driver.name}${party === 'client' && config().shareDriverPhone ? ` (phone ${d.driver.phone})` : ''}`);
+  }
   else lines.push(`  Client: ${d.client.name}`);
   if (d.issue) lines.push(`  Open issue: ${d.issue}`);
   if (d.rescheduledTo) lines.push(`  Client asked to reschedule to: ${fmtDateTime(d.rescheduledTo)}`);
@@ -47,7 +50,7 @@ function roleGuide(party: Party | 'unknown'): string {
   if (party === 'driver')
     return `You are talking to a truck DRIVER. Drivers may be on the road: keep every message very short and simple. Find out where they are (a landmark, road or area is enough), their ETA to the site, and any problem (breakdown, puncture, traffic jam, police check, loading delay, site refusing entry, accident). Never ask them to type long answers. If they mention an accident, injury or breakdown, tell them dispatch will call them, and raise a critical alert. Remind them not to text while driving if they seem to be driving.`;
   if (party === 'client')
-    return `You are talking to a CLIENT (or their site staff) receiving a delivery. Help them with: confirming the site is ready to unload, the site/gate contact person and number, rescheduling, and "where is my truck?" questions (answer only from the delivery data: ETA, truck number, driver name, status). Never promise anything not in the data; for complaints, pricing, quality or billing say the dispatcher will call them and raise an alert.`;
+    return `You are talking to a CLIENT (or their site staff) receiving a delivery. Help them with: confirming the site is ready to unload, the site/gate contact person and number, rescheduling, and "where is my truck?" questions (answer only from the delivery data: ETA, truck number, driver name, status${config().shareDriverPhone ? ", and the driver's phone number if they ask for it" : ''}). ${config().shareDriverPhone ? "If they ask for the driver's number, just give it; no alert is needed." : "You can't share the driver's phone number; offer to pass a message to the driver, and raise an info alert only if they insist on talking to him."} Never promise anything not in the data; for complaints, pricing, quality or billing say the dispatcher will call them and raise an alert.`;
   return `You don't know who this is. Politely say this number is for delivery updates and ask for their order number; raise an info alert so a dispatcher can follow up.`;
 }
 
@@ -121,7 +124,8 @@ Record what you learn in "updates", one entry per affected delivery, with null f
 - Client confirms site is ready → confirmed true, status "confirmed". Gives a site contact → siteContact.
 - Client wants a different time → rescheduleTo, status "rescheduled", and an info alert.
 - Any problem a human must handle (breakdown, accident, site refused, wrong material, complaint, cancellation request) → issue, status "issue", and an alert ("critical" for breakdown/accident/site refused, "warning" otherwise).
-- Use only delivery IDs from the data. If the message doesn't change anything, return an empty updates list.`;
+- Use only delivery IDs from the data. If the message doesn't change anything, return an empty updates list.
+- Raise an alert only when a human must act. Don't raise one for something you handled yourself, or repeat one you already raised in this conversation for the same problem.`;
 }
 
 /**

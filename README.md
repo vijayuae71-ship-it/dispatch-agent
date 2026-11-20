@@ -47,7 +47,9 @@ Google Sheet / API ─► deliveries ─► rules (every minute) ─► WhatsApp
 | Driver silent | 20 min after asking | Call. Still nothing? **Critical** alert. |
 | Running late | ETA 45+ min after planned | Alert the dispatcher once |
 
-All timings are in `config/dispatch.json`.
+All timings are in `config/dispatch.json`, along with `shareDriverPhone`: clients get the driver's number when they ask, which is normal practice; set it to `false` to have the bot pass messages instead. Unknown numbers never get it.
+
+Alerts the AI raises are de-duplicated: a repeat for the same delivery within 30 minutes is skipped unless it's more serious.
 
 **Cost control (important for India):**
 - WhatsApp messages cost paise, while voice minutes cost rupees, so voice is only the fallback.
@@ -116,7 +118,7 @@ POST /api/demo/start | advance { minutes } | message { phone, text } | call { ca
 
 ```bash
 npm run typecheck
-npm test     # 14 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
+npm test     # 16 tests, no keys or network: rules, sheet parsing, templates, a full demo morning, the WhatsApp webhook, and a live call over the relay WebSocket (fake Claude)
 ```
 
 | Path | What |

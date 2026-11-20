@@ -12,6 +12,7 @@
     "lateThresholdMin": 45
   },
   "callsEnabled": true,
+  "shareDriverPhone": true,
   "languages": [
     { "code": "hi-IN", "name": "Hindi / Hinglish", "ttsProvider": "ElevenLabs", "transcriptionProvider": "Deepgram", "transcriptionLanguage": "multi", "speechModel": "nova-3-general", "style": "Everyday Hindi; mix English words like truck, site, location, ETA as people do." },
     { "code": "en-IN", "name": "English (Indian)", "ttsProvider": "ElevenLabs", "transcriptionProvider": "Deepgram", "transcriptionLanguage": "multi", "speechModel": "nova-3-general" },

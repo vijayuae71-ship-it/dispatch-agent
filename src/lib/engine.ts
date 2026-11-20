@@ -7,6 +7,7 @@ import { isDemo, ring, sendTemplate, sendText } from './outbox';
 import { templateVars } from './templates';
 import {
   addAlert,
+  listAlerts,
   appendMessage,
   getCall,
   getDelivery,
@@ -52,7 +53,27 @@ export async function identify(phone: string): Promise<{ party: Party | 'unknown
 
 // ------------------------------------------------------------------ alerts
 
-export async function raiseAlert(a: AgentAlert) {
+const SEVERITY = { info: 0, warning: 1, critical: 2 } as const;
+
+/**
+ * AI-raised alerts can repeat as a conversation goes on ("please call me",
+ * "call me back"). Skip one if an open alert for the same delivery, at the
+ * same or higher severity, was raised in the last 30 minutes.
+ */
+async function isDuplicate(a: AgentAlert): Promise<boolean> {
+  if (!a.deliveryId) return false;
+  const recent = await listAlerts(50);
+  return recent.some(
+    (x) =>
+      !x.resolved &&
+      x.deliveryId === a.deliveryId &&
+      SEVERITY[x.severity] >= SEVERITY[a.severity] &&
+      minutesBetween(x.at, now()) < 30,
+  );
+}
+
+export async function raiseAlert(a: AgentAlert, opts: { dedupe?: boolean } = {}) {
+  if (opts.dedupe && (await isDuplicate(a))) return null;
   const alert = await addAlert({ deliveryId: a.deliveryId || undefined, severity: a.severity, text: a.text });
   // Tell dispatchers on WhatsApp for anything that isn't routine.
   if (a.severity !== 'info') {
@@ -120,7 +141,7 @@ export async function handleInbound(phone: string, text: string, opts: { hasMedi
   const r = await replyToMessage({ party: who.party, name: who.name, deliveries: who.deliveries, history: thread?.messages || [] });
   if (r.language) await setThreadLanguage(phone, r.language);
   const changes = await applyUpdates(r.updates, who.party);
-  if (r.alert) await raiseAlert(r.alert);
+  if (r.alert) await raiseAlert(r.alert, { dedupe: true });
   if (r.reply) {
     await sendText(phone, r.reply, { party: who.party === 'unknown' ? 'client' : who.party, name: who.name, deliveryIds: who.deliveries.map((d) => d.id) });
   }
@@ -219,7 +240,7 @@ export async function recordVoiceTurn(call: CallSession, heard: string | null, t
   if (heard) await appendMessage(contactPhone, { party: call.party, direction: 'in', channel: 'call', text: heard, deliveryIds: call.deliveryIds });
   if (turn.text) await appendMessage(contactPhone, { party: call.party, direction: 'out', channel: 'call', text: turn.text, deliveryIds: call.deliveryIds });
   await applyUpdates(turn.updates, call.party);
-  if (turn.alert) await raiseAlert({ ...turn.alert, deliveryId: turn.alert.deliveryId || call.deliveryIds[0] || null });
+  if (turn.alert) await raiseAlert({ ...turn.alert, deliveryId: turn.alert.deliveryId || call.deliveryIds[0] || null }, { dedupe: true });
   if (turn.action === 'end') {
     call.status = 'completed';
     call.endedAt = t;

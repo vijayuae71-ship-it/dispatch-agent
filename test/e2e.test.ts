@@ -196,3 +196,28 @@ test('live call over the ConversationRelay WebSocket', async () => {
   assert.equal(after.deliveries.find((d: any) => d.id === 'ORD-1042').lastLocation, 'Aundh');
   assert.equal(after.calls.find((c: any) => c.id === call.id).status, 'completed');
 });
+
+test("client gets the driver's number; an unknown caller doesn't", async () => {
+  await api('/api/demo/start', {});
+  await api('/api/demo/message', { phone: '+919000000101', text: 'driver ka number do' });
+  let s = (await api('/api/state')).json;
+  assert.match(thread(s, '+919000000101').messages.at(-1).text, /\+919000000201/); // Ramesh, ORD-1041's driver
+  assert.equal(s.alerts.length, 0, 'no alert needed when the bot can answer');
+
+  await api('/api/demo/message', { phone: '+919999999999', text: 'driver ka number do' });
+  const unknownReq = seen.filter((b) => !b.stream).at(-1);
+  assert.doesNotMatch(JSON.stringify(unknownReq), /\(phone \+91/);
+});
+
+test('a repeated request raises one alert, not two', async () => {
+  await api('/api/demo/start', {});
+  await api('/api/demo/message', { phone: '+919000000101', text: 'please call back' });
+  await api('/api/demo/message', { phone: '+919000000101', text: 'call back jaldi please' });
+  const s = (await api('/api/state')).json;
+  assert.equal(s.alerts.filter((a: any) => a.deliveryId === 'ORD-1041').length, 1);
+  // A more serious problem on the same delivery still gets through.
+  await api('/api/demo/message', { phone: '+919000000201', text: 'truck ka tyre puncture ho gaya' });
+  const after = (await api('/api/state')).json.alerts.filter((a: any) => a.deliveryId === 'ORD-1041');
+  assert.equal(after.length, 2);
+  assert.ok(after.some((a: any) => a.severity === 'critical'));
+});

@@ -38,6 +38,8 @@ export interface DispatchConfig {
   };
   /** Place voice calls when WhatsApp gets no reply. */
   callsEnabled: boolean;
+  /** Give clients the driver's phone number when they ask (normal practice in Indian logistics). */
+  shareDriverPhone: boolean;
   languages: VoiceLanguage[];
 }
 
@@ -55,6 +57,7 @@ const DEFAULTS: DispatchConfig = {
     lateThresholdMin: 45,
   },
   callsEnabled: true,
+  shareDriverPhone: true,
   languages: [],
 };
 
@@ -79,6 +82,7 @@ export function loadConfig(path = process.env.CONFIG_FILE || 'config/dispatch.js
       .map((phone, i) => ({ name: `Dispatcher ${i + 1}`, phone }));
   }
   if (process.env.CALLS_ENABLED) cfg.callsEnabled = process.env.CALLS_ENABLED === 'true';
+  if (process.env.SHARE_DRIVER_PHONE) cfg.shareDriverPhone = process.env.SHARE_DRIVER_PHONE === 'true';
   cached = cfg;
   return cfg;
 }
